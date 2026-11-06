@@ -2941,7 +2941,7 @@ function renderStandardScenarioCards() {
       <div class="accent-bar"></div>
       <div class="scenario-head">
         <input class="name-input" value="${escapeHtml(s.name || ('Scenario ' + String.fromCharCode(65+i)))}" data-key="name" data-idx="${i}">
-        ${state.standard.length > 1 ? `<button class="icon-btn" data-remove="${i}" title="Remove"><svg><use href="#i-x"/></svg></button>` : ''}
+        <button class="icon-btn" data-remove="${i}" title="Remove"><svg><use href="#i-x"/></svg></button>
       </div>
       <div class="loan-type-row">
         ${Object.entries(LOAN_PROGRAMS).map(([k,p]) => `<button class="loan-type-btn ${(s.loanType||'conventional')===k?'active':''}" data-loantype="${i}" data-val="${k}">${p.label}</button>`).join('')}
@@ -5545,7 +5545,7 @@ function calcOneDPA(shared, p) {
   const assist = p.assistanceType === 'pct' ? price * num(p.assistance) / 100 : num(p.assistance);
   const down = price * num(p.downPct) / 100;
   const loan = Math.max(price - down, 0);
-  const fee = p.feeType === 'pct' ? loan * num(p.fees) / 100 : num(p.fees);
+  const fee = programFeeTotal(p, { loan, price });
   const cashDown = Math.max(down - assist, 0);
   const leftover = Math.max(assist - down, 0);
   const cashToClose = Math.max(cashDown + fee - leftover, 0);
@@ -5557,8 +5557,13 @@ function calcOneDPA(shared, p) {
   const hoa = num(shared.hoa);
   return { price, assist, down, loan, fee, cashDown, cashToClose, pi, secondPI, secondBal, tax, ins, hoa, piti: pi + secondPI + tax + ins + hoa };
 }
+function programFeeTotal(owner, ctx) {
+  if (!owner) return 0;
+  if (!Array.isArray(owner.fees)) seedFees(owner, 'fees');
+  return feesToTotal(owner.fees, ctx);
+}
 function calcDPA(s) {
-  const programs = (s.programs || []).slice(0, 2);
+  const programs = (s.programs || []).slice(0, 3);
   return { programs: programs.map(p => ({ src: p, c: calcOneDPA(s, p) })) };
 }
 function dpaMoneyField(label, id, value, type) {
@@ -5573,29 +5578,54 @@ function dpaMoneyField(label, id, value, type) {
     <div class="input-wrap">${isPct ? '' : '<span class="pre">$</span>'}<input type="number" id="${id}" value="${value}" step="${isPct ? '0.05' : '100'}">${isPct ? '<span class="post">%</span>' : ''}</div>
   </div>`;
 }
+function addDPAProgram() {
+  const s = state.dpa;
+  if (!s.programs) s.programs = [];
+  if (s.programs.length >= 3) return;
+  const last = s.programs[s.programs.length - 1];
+  const copy = last ? JSON.parse(JSON.stringify(last)) : defaultDPAProgram('Program A', 15000, 6.5);
+  copy.name = 'Program ' + String.fromCharCode(65 + s.programs.length);
+  s.programs.push(copy);
+  saveState();
+  renderDPA();
+}
+function removeDPAProgram(i) {
+  state.dpa.programs.splice(i, 1);
+  saveState();
+  renderDPA();
+}
 function renderDPA() {
   if (!state.dpa) state.dpa = defaultDPA();
   const s = state.dpa;
-  setSubtitle('Down payment assistance — compare two programs');
-  setIntro(true, `Compare two <strong>down payment assistance</strong> programs on the same purchase. Assistance can be a percent of price or a dollar amount. A forgivable grant reduces cash to close. A repayable second lien still covers that cash, and a rate above zero adds a monthly payment. A 0% second lien is treated as deferred.`);
-  const cards = (s.programs || []).map((p, i) => `<div class="scenario">
+  if (!s.programs) s.programs = [];
+  s.programs.forEach((p, i) => syncFeeHost('dpa' + i));
+  setSubtitle('Down payment assistance — compare up to three programs');
+  setIntro(true, `Compare up to three <strong>down payment assistance</strong> programs on the same purchase. Assistance can be a percent of price or a dollar amount. A forgivable grant reduces cash to close. A repayable second lien still covers that cash, and a rate above zero adds a monthly payment. A 0% second lien is treated as deferred. Remove every program for a fresh start.`);
+  const cards = s.programs.map((p, i) => {
+    const price = num(s.homePrice);
+    const loan = Math.max(price - price * num(p.downPct) / 100, 0);
+    return `<div class="scenario">
     <div class="accent-bar"></div>
-    <div class="scenario-head"><input class="name-input" data-dpa="${i}" data-field="name" value="${escapeHtml(p.name || ('Program ' + String.fromCharCode(65 + i)))}"></div>
+    <div class="scenario-head">
+      <input class="name-input" data-dpa="${i}" data-field="name" value="${escapeHtml(p.name || ('Program ' + String.fromCharCode(65 + i)))}">
+      <button class="icon-btn" type="button" onclick="removeDPAProgram(${i})" title="Remove"><svg><use href="#i-x"/></svg></button>
+    </div>
     <div class="field-grid">
       ${dpaMoneyField('Assistance', 'dpa_assist_' + i, p.assistance, p.assistanceType)}
       ${fld('Down payment required', `<input type="number" data-dpa="${i}" data-field="downPct" value="${p.downPct}" step="0.5"><span class="post">%</span>`)}
       ${fld('First-lien rate', `<input type="number" data-dpa="${i}" data-field="rate" value="${p.rate}" step="0.125"><span class="post">%</span>`)}
       ${fld('Term', `<input type="number" data-dpa="${i}" data-field="term" value="${p.term}" step="1"><span class="post">yr</span>`)}
-      ${dpaMoneyField('Closing costs', 'dpa_fee_' + i, p.fees, p.feeType)}
+      ${feeBuilderHTML('dpa' + i, 'Closing costs', programFeeTotal(p, { loan, price }))}
       <div class="field full">
-        <label style="display:flex;gap:8px;align-items:center;text-transform:none;letter-spacing:0;font-size:13px;font-weight:500;color:var(--text);">
+        <label style="display:flex;justify-content:flex-start;gap:8px;align-items:center;width:max-content;text-transform:none;letter-spacing:0;font-size:13px;font-weight:500;color:var(--text);">
           <input type="checkbox" data-dpa="${i}" data-field="repayable" ${p.repayable ? 'checked' : ''}> Repaid as a second lien
         </label>
       </div>
       ${fld('Second-lien rate <span class="hint">0 = deferred</span>', `<input type="number" data-dpa="${i}" data-field="secondRate" value="${p.secondRate}" step="0.125"><span class="post">%</span>`)}
       ${fld('Second-lien term', `<input type="number" data-dpa="${i}" data-field="secondTerm" value="${p.secondTerm}" step="1"><span class="post">yr</span>`)}
     </div>
-  </div>`).join('');
+  </div>`;
+  }).join('');
   document.getElementById('modeContent').innerHTML = `
     <section>
       <div class="section-row"><div class="section-title">Purchase</div></div>
@@ -5608,8 +5638,8 @@ function renderDPA() {
       </div>
     </section>
     <section>
-      <div class="section-row"><div class="section-title">Programs</div><div class="section-row-meta">Assistance % is of the purchase price. Closing-cost % is of the first-lien loan.</div></div>
-      <div class="scenarios">${cards}</div>
+      <div class="section-row"><div class="section-title">Programs</div><div class="section-row-meta">Assistance % is of the purchase price. Up to three programs.</div></div>
+      <div id="dpaPrograms" class="scenarios">${cards}</div>
     </section>
     <section><div class="section-row"><div class="section-title">Headline numbers</div></div><div id="dpaStats" class="stat-grid"></div></section>
     <section><div class="section-row"><div class="section-title">Comparison</div></div><div class="panel"><table class="compare" id="dpaCompare"></table></div></section>`;
@@ -5637,29 +5667,28 @@ function renderDPA() {
   });
   document.querySelectorAll('.dpa-unit').forEach(btn => {
     btn.addEventListener('click', () => {
-      const id = btn.dataset.dpaId || '';
-      const assist = id.indexOf('assist') >= 0;
-      const i = parseInt(id.split('_').pop(), 10);
+      const i = parseInt((btn.dataset.dpaId || '').split('_').pop(), 10);
       const p = state.dpa.programs[i];
       if (!p) return;
       const price = num(state.dpa.homePrice);
-      const loan = Math.max(price - price * num(p.downPct) / 100, 0);
       const to = btn.dataset.to;
-      if (assist) {
-        const cur = p.assistanceType === 'pct' ? 'pct' : '$';
-        if (to === 'pct' && cur !== 'pct') p.assistance = price > 0 ? +((num(p.assistance) / price) * 100).toFixed(3) : 0;
-        if (to === '$' && cur === 'pct') p.assistance = Math.round(price * num(p.assistance) / 100);
-        p.assistanceType = to === 'pct' ? 'pct' : '$';
-      } else {
-        const cur = p.feeType === 'pct' ? 'pct' : '$';
-        if (to === 'pct' && cur !== 'pct') p.fees = loan > 0 ? +((num(p.fees) / loan) * 100).toFixed(3) : 0;
-        if (to === '$' && cur === 'pct') p.fees = Math.round(loan * num(p.fees) / 100);
-        p.feeType = to === 'pct' ? 'pct' : '$';
-      }
+      const cur = p.assistanceType === 'pct' ? 'pct' : '$';
+      if (to === 'pct' && cur !== 'pct') p.assistance = price > 0 ? +((num(p.assistance) / price) * 100).toFixed(3) : 0;
+      if (to === '$' && cur === 'pct') p.assistance = Math.round(price * num(p.assistance) / 100);
+      p.assistanceType = to === 'pct' ? 'pct' : '$';
       saveState();
       renderDPA();
     });
   });
+  const dpaList = document.getElementById('dpaPrograms');
+  if (dpaList && s.programs.length < 3) {
+    const add = document.createElement('div');
+    add.className = 'add-scenario';
+    add.innerHTML = '<svg><use href="#i-plus"/></svg> Add program';
+    add.onclick = addDPAProgram;
+    dpaList.appendChild(add);
+  }
+  s.programs.forEach((p, i) => initModeBuilders('dpa' + i));
   registerTaxIns('dpa', { get: () => state.dpa, price: () => state.dpa.homePrice, render: renderDPA });
   renderDPAOutputs();
 }
@@ -5668,12 +5697,16 @@ function renderDPAOutputs() {
   const stats = document.getElementById('dpaStats');
   const table = document.getElementById('dpaCompare');
   if (!stats || !table) return;
+  if (!pack.programs.length) {
+    stats.innerHTML = '<div class="stat"><div class="stat-label">Add a program to compare</div></div>';
+    table.innerHTML = '';
+    return;
+  }
   stats.innerHTML = pack.programs.map((row, i) => `<div class="stat ${i === 0 ? 'highlight' : ''}">
     <div class="stat-label">${escapeHtml(row.src.name || 'Program')}</div>
     <div class="stat-value">${fmt$(row.c.piti)}</div>
     <div class="stat-sub">${fmt$(row.c.cashToClose)} cash to close · ${fmt$(row.c.assist)} assistance</div>
   </div>`).join('');
-  const a = pack.programs[0], b = pack.programs[1];
   const cols = pack.programs.map(r => escapeHtml(r.src.name || 'Program'));
   const line = (label, fn) => `<tr><td>${label}</td>${pack.programs.map(r => `<td>${fn(r)}</td>`).join('')}</tr>`;
   table.innerHTML = `<thead><tr><th></th>${cols.map(c => `<th>${c}</th>`).join('')}</tr></thead><tbody>
@@ -5688,7 +5721,10 @@ function renderDPAOutputs() {
     ${line('Insurance', r => fmt$(r.c.ins))}
     <tr class="headline"><td>Monthly housing</td>${pack.programs.map(r => `<td>${fmt$(r.c.piti)}</td>`).join('')}</tr>
   </tbody>`;
-  if (!b) return;
+  pack.programs.forEach((row, i) => {
+    const el = document.getElementById('dpa' + i + '-fee-total');
+    if (el) el.textContent = fmt$(row.c.fee);
+  });
 }
 function buildDPASections() {
   const pack = calcDPA(state.dpa);
@@ -5713,6 +5749,7 @@ function buildDPASections() {
 function generateDPAFlyer(opts) {
   opts = opts || {};
   const pack = calcDPA(state.dpa);
+  if (!pack.programs.length) { alert('Add a program first.'); return; }
   const idx = Math.max(0, Math.min(pack.programs.length - 1, opts.idx || 0));
   const rows = pack.programs.map((r, i) => ({
     yr: r.src.name || ('Program ' + String.fromCharCode(65 + i)),
@@ -5732,7 +5769,7 @@ function generateDPAFlyer(opts) {
   return openFlyer({
     docTitle: 'Houzd DPA Comparison',
     tag: 'Down Payment Assistance',
-    title: 'Two Assistance Programs, Side by Side',
+    title: pack.programs.length === 1 ? 'Assistance Program' : 'Assistance Programs, Side by Side',
     subtitle: `<strong>${fmt$(num(state.dpa.homePrice))}</strong> purchase`,
     clientName: opts.clientName || '',
     cardCount: rows.length,
@@ -5756,7 +5793,7 @@ function calcOneDSCR(shared, loan) {
   const price = num(shared.price);
   const amount = price * num(loan.ltv) / 100;
   const down = Math.max(price - amount, 0);
-  const fee = loan.feeType === 'pct' ? amount * num(loan.fees) / 100 : num(loan.fees);
+  const fee = programFeeTotal(loan, { loan: amount, price });
   const pi = monthlyPI(amount, num(loan.rate), num(loan.term));
   const tax = annualTax(shared, price) / 12;
   const ins = annualIns(shared, price) / 12;
@@ -5767,23 +5804,48 @@ function calcOneDSCR(shared, loan) {
   return { price, amount, down, fee, cashToClose: down + fee, pi, tax, ins, hoa, pitia, rent, dscr, cashFlow: rent - pitia };
 }
 function calcDSCR(s) {
-  return { loans: (s.loans || []).slice(0, 2).map(loan => ({ src: loan, c: calcOneDSCR(s, loan) })) };
+  return { loans: (s.loans || []).slice(0, 3).map(loan => ({ src: loan, c: calcOneDSCR(s, loan) })) };
+}
+function addDSCRLoan() {
+  const s = state.dscr;
+  if (!s.loans) s.loans = [];
+  if (s.loans.length >= 3) return;
+  const last = s.loans[s.loans.length - 1];
+  const copy = last ? JSON.parse(JSON.stringify(last)) : defaultDSCRLoan('Loan A', 7.25, 75);
+  copy.name = 'Loan ' + String.fromCharCode(65 + s.loans.length);
+  s.loans.push(copy);
+  saveState();
+  renderDSCR();
+}
+function removeDSCRLoan(i) {
+  state.dscr.loans.splice(i, 1);
+  saveState();
+  renderDSCR();
 }
 function renderDSCR() {
   if (!state.dscr) state.dscr = defaultDSCR();
   const s = state.dscr;
-  setSubtitle('DSCR loans — compare two investor scenarios');
-  setIntro(true, `A <strong>DSCR</strong> loan is sized off the property's rent. The ratio here is monthly rent divided by principal, interest, taxes, insurance, and HOA. A result above 1.00 means the rent covers that payment. This is an estimate for comparison, not an underwriting decision.`);
-  const cards = (s.loans || []).map((loan, i) => `<div class="scenario">
+  if (!s.loans) s.loans = [];
+  s.loans.forEach((loan, i) => syncFeeHost('dscr' + i));
+  setSubtitle('DSCR loans — compare up to three investor scenarios');
+  setIntro(true, `A <strong>DSCR</strong> loan is sized off the property's rent. The ratio here is monthly rent divided by principal, interest, taxes, insurance, and HOA. A result above 1.00 means the rent covers that payment. Compare up to three loans, or remove them all for a fresh start. This is an estimate for comparison, not an underwriting decision.`);
+  const cards = s.loans.map((loan, i) => {
+    const price = num(s.price);
+    const amount = price * num(loan.ltv) / 100;
+    return `<div class="scenario">
     <div class="accent-bar"></div>
-    <div class="scenario-head"><input class="name-input" data-dscr="${i}" data-field="name" value="${escapeHtml(loan.name || ('Loan ' + String.fromCharCode(65 + i)))}"></div>
+    <div class="scenario-head">
+      <input class="name-input" data-dscr="${i}" data-field="name" value="${escapeHtml(loan.name || ('Loan ' + String.fromCharCode(65 + i)))}">
+      <button class="icon-btn" type="button" onclick="removeDSCRLoan(${i})" title="Remove"><svg><use href="#i-x"/></svg></button>
+    </div>
     <div class="field-grid">
       ${fld('Rate', `<input type="number" data-dscr="${i}" data-field="rate" value="${loan.rate}" step="0.125"><span class="post">%</span>`)}
       ${fld('Term', `<input type="number" data-dscr="${i}" data-field="term" value="${loan.term}" step="1"><span class="post">yr</span>`)}
       ${fld('LTV', `<input type="number" data-dscr="${i}" data-field="ltv" value="${loan.ltv}" step="1"><span class="post">%</span>`)}
-      ${dpaMoneyField('Closing costs', 'dscr_fee_' + i, loan.fees, loan.feeType)}
+      ${feeBuilderHTML('dscr' + i, 'Closing costs', programFeeTotal(loan, { loan: amount, price }))}
     </div>
-  </div>`).join('');
+  </div>`;
+  }).join('');
   document.getElementById('modeContent').innerHTML = `
     <section>
       <div class="section-row"><div class="section-title">Property</div></div>
@@ -5797,8 +5859,8 @@ function renderDSCR() {
       </div>
     </section>
     <section>
-      <div class="section-row"><div class="section-title">Loans</div><div class="section-row-meta">Closing-cost % is of the loan amount.</div></div>
-      <div class="scenarios">${cards}</div>
+      <div class="section-row"><div class="section-title">Loans</div><div class="section-row-meta">Up to three loans. Closing costs break out inside each card.</div></div>
+      <div id="dscrLoans" class="scenarios">${cards}</div>
     </section>
     <section><div class="section-row"><div class="section-title">Headline numbers</div></div><div id="dscrStats" class="stat-grid"></div></section>
     <section><div class="section-row"><div class="section-title">Comparison</div></div><div class="panel"><table class="compare" id="dscrCompare"></table></div></section>`;
@@ -5816,21 +5878,15 @@ function renderDSCR() {
       renderDSCROutputs();
     });
   });
-  document.querySelectorAll('.dpa-unit').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const i = parseInt((btn.dataset.dpaId || '').split('_').pop(), 10);
-      const loan = state.dscr.loans[i];
-      if (!loan) return;
-      const amount = num(state.dscr.price) * num(loan.ltv) / 100;
-      const to = btn.dataset.to;
-      const cur = loan.feeType === 'pct' ? 'pct' : '$';
-      if (to === 'pct' && cur !== 'pct') loan.fees = amount > 0 ? +((num(loan.fees) / amount) * 100).toFixed(3) : 0;
-      if (to === '$' && cur === 'pct') loan.fees = Math.round(amount * num(loan.fees) / 100);
-      loan.feeType = to === 'pct' ? 'pct' : '$';
-      saveState();
-      renderDSCR();
-    });
-  });
+  const dscrList = document.getElementById('dscrLoans');
+  if (dscrList && s.loans.length < 3) {
+    const add = document.createElement('div');
+    add.className = 'add-scenario';
+    add.innerHTML = '<svg><use href="#i-plus"/></svg> Add loan';
+    add.onclick = addDSCRLoan;
+    dscrList.appendChild(add);
+  }
+  s.loans.forEach((loan, i) => initModeBuilders('dscr' + i));
   registerTaxIns('dscr', { get: () => state.dscr, price: () => state.dscr.price, render: renderDSCR });
   renderDSCROutputs();
 }
@@ -5839,6 +5895,11 @@ function renderDSCROutputs() {
   const stats = document.getElementById('dscrStats');
   const table = document.getElementById('dscrCompare');
   if (!stats || !table) return;
+  if (!pack.loans.length) {
+    stats.innerHTML = '<div class="stat"><div class="stat-label">Add a loan to compare</div></div>';
+    table.innerHTML = '';
+    return;
+  }
   stats.innerHTML = pack.loans.map(row => `<div class="stat ${row.c.dscr >= 1 ? 'highlight' : ''}">
     <div class="stat-label">${escapeHtml(row.src.name || 'Loan')} · DSCR</div>
     <div class="stat-value">${row.c.dscr.toFixed(2)}</div>
@@ -5855,6 +5916,10 @@ function renderDSCROutputs() {
     ${line('DSCR', r => r.c.dscr.toFixed(2))}
     <tr class="headline"><td>Monthly cash flow</td>${pack.loans.map(r => `<td>${(r.c.cashFlow >= 0 ? '+' : '') + fmt$(r.c.cashFlow)}</td>`).join('')}</tr>
   </tbody>`;
+  pack.loans.forEach((row, i) => {
+    const el = document.getElementById('dscr' + i + '-fee-total');
+    if (el) el.textContent = fmt$(row.c.fee);
+  });
 }
 function buildDSCRSections() {
   const pack = calcDSCR(state.dscr);
@@ -5877,6 +5942,7 @@ function buildDSCRSections() {
 function generateDSCRFlyer(opts) {
   opts = opts || {};
   const pack = calcDSCR(state.dscr);
+  if (!pack.loans.length) { alert('Add a loan first.'); return; }
   const idx = Math.max(0, Math.min(pack.loans.length - 1, opts.idx || 0));
   const cards = pack.loans.map((r, i) => ({
     yr: r.src.name || ('Loan ' + String.fromCharCode(65 + i)),
@@ -7154,8 +7220,8 @@ function renderHelocOptionCards() {
   const wrap = document.getElementById('helocOptionsList');
   if (!wrap) return;
   const s = state.heloc;
-  wrap.innerHTML = s.helocOptions.map((o,i) => helocOptionCardHTML(o, i, s.helocOptions.length > 1)).join('');
-  if (s.helocOptions.length < 4) {
+  wrap.innerHTML = s.helocOptions.map((o,i) => helocOptionCardHTML(o, i, true)).join('');
+  if (s.helocOptions.length < 3) {
     const add = document.createElement('div');
     add.className = 'add-scenario';
     add.innerHTML = '<svg><use href="#i-plus"/></svg> Add HELOC option';
@@ -7180,6 +7246,8 @@ function renderHelocOptionCards() {
 
 function addHelocOption() {
   const s = state.heloc;
+  if (!s.helocOptions) s.helocOptions = [];
+  if (s.helocOptions.length >= 3) return;
   const last = s.helocOptions[s.helocOptions.length-1];
   const copy = last ? JSON.parse(JSON.stringify(last)) : { rate:8.5, maxCLTV:85, drawPeriod:10, repaymentTerm:20, closingCosts:0, annualFee:0, intro:0, introMonths:0 };
   copy.name = 'Lender ' + String.fromCharCode(65 + s.helocOptions.length);
@@ -7275,7 +7343,15 @@ function renderHELOCOutputs() {
   const s = state.heloc;
   const c = calcHELOC(s);
   const best = c.best;
-  if (!best) { document.getElementById('hlStats').innerHTML = '<div class="stat"><div class="stat-label">Add a HELOC option to compare</div></div>'; return; }
+  if (!best) {
+    const stats = document.getElementById('hlStats');
+    if (stats) stats.innerHTML = '<div class="stat"><div class="stat-label">Add a HELOC option to compare</div></div>';
+    const table = document.getElementById('hlTable');
+    if (table) table.innerHTML = '';
+    destroyChart('hlPaymentChart');
+    destroyChart('hlCostChart');
+    return;
+  }
 
   // Per-card mini summary
   c.options.forEach((o, i) => {
@@ -7639,8 +7715,8 @@ function renderBridgeOptionCards() {
   const wrap = document.getElementById('bridgeOptionsList');
   if (!wrap) return;
   const s = state.bridge;
-  wrap.innerHTML = s.bridgeOptions.map((o,i) => bridgeOptionCardHTML(o, i, s.bridgeOptions.length > 1)).join('');
-  if (s.bridgeOptions.length < 4) {
+  wrap.innerHTML = s.bridgeOptions.map((o,i) => bridgeOptionCardHTML(o, i, true)).join('');
+  if (s.bridgeOptions.length < 3) {
     const add = document.createElement('div');
     add.className = 'add-scenario';
     add.innerHTML = '<svg><use href="#i-plus"/></svg> Add bridge option';
@@ -7663,9 +7739,12 @@ function renderBridgeOptionCards() {
 
 function addBridgeOption() {
   const s = state.bridge;
+  if (!s.bridgeOptions) s.bridgeOptions = [];
+  if (s.bridgeOptions.length >= 3) return;
   const last = s.bridgeOptions[s.bridgeOptions.length-1];
-  s.bridgeOptions.push({ ...(last || { points:1.5, payStructure:'interestOnly', rate:9.5, termMonths:6, maxLTV:75, otherFees:2000, extensionMonths:3, extensionPoints:1.5 }),
-    name: 'Option ' + String.fromCharCode(65 + s.bridgeOptions.length) });
+  const copy = last ? JSON.parse(JSON.stringify(last)) : { points:1.5, payStructure:'interestOnly', rate:9.5, termMonths:6, maxLTV:75, otherFees:2000, extensionMonths:3, extensionPoints:1.5 };
+  copy.name = 'Option ' + String.fromCharCode(65 + s.bridgeOptions.length);
+  s.bridgeOptions.push(copy);
   saveState();
   renderBridgeOptionCards();
   renderBridgeOutputs();
@@ -7821,7 +7900,15 @@ function renderBridgeOutputs() {
   const s = state.bridge;
   const c = calcBridge(s);
   const best = c.best;
-  if (!best) { document.getElementById('brStats').innerHTML = '<div class="stat"><div class="stat-label">Add a bridge option to compare</div></div>'; return; }
+  if (!best) {
+    const stats = document.getElementById('brStats');
+    if (stats) stats.innerHTML = '<div class="stat"><div class="stat-label">Add a bridge option to compare</div></div>';
+    const table = document.getElementById('brTable');
+    if (table) table.innerHTML = '';
+    destroyChart('brPaymentChart');
+    destroyChart('brCostChart');
+    return;
+  }
 
   // Structure explainer note
   const noteEl = document.getElementById('br_structureNote');
@@ -9425,12 +9512,24 @@ function getModeState(prefix) {
     if (opt) seedFees(opt, 'fees');
     return opt;
   }
+  if (/^dpa\d+$/.test(prefix)) {
+    const p = state.dpa && state.dpa.programs && state.dpa.programs[parseInt(prefix.slice(3), 10)];
+    if (p) seedFees(p, 'fees');
+    return p;
+  }
+  if (/^dscr\d+$/.test(prefix)) {
+    const loan = state.dscr && state.dscr.loans && state.dscr.loans[parseInt(prefix.slice(4), 10)];
+    if (loan) seedFees(loan, 'fees');
+    return loan;
+  }
   const map = { bd: state.buydown, co: state.cashout, rf: state.refi };
   return map[prefix];
 }
 function getModeOutputFn(prefix) {
   if (prefix === 'hl' || prefix.indexOf('hopt') === 0) return renderHELOCOutputs;
   if (prefix === 'brn' || prefix === 'brh') return renderBridgeOutputs;
+  if (/^dpa\d+$/.test(prefix)) return renderDPAOutputs;
+  if (/^dscr\d+$/.test(prefix)) return renderDSCROutputs;
   const map = { bd: renderBuydownOutputs, co: renderCashoutOutputs, rf: renderRefiOutputs };
   return map[prefix];
 }
@@ -9478,6 +9577,18 @@ function modeLoanContext(prefix, s) {
     const b = state.bridge || {};
     const price = num(b.currentHomeValue);
     return { loan: Math.max(price - num(b.currentMortgageBalance), 0), price };
+  }
+  if (/^dpa\d+$/.test(prefix)) {
+    const shared = state.dpa || {};
+    const p = (shared.programs || [])[parseInt(prefix.slice(3), 10)] || {};
+    const price = num(shared.homePrice);
+    return { loan: Math.max(price - price * num(p.downPct) / 100, 0), price };
+  }
+  if (/^dscr\d+$/.test(prefix)) {
+    const shared = state.dscr || {};
+    const loanObj = (shared.loans || [])[parseInt(prefix.slice(4), 10)] || {};
+    const price = num(shared.price);
+    return { loan: price * num(loanObj.ltv) / 100, price };
   }
   const price = num(s.homePrice);
   const dp = s.dpType === 'pct' ? price * num(s.downPmt) / 100 : num(s.downPmt);
