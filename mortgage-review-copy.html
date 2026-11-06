@@ -1737,6 +1737,8 @@
       <option value="refi">Rate/Term Refi vs Current Loan</option>
       <option value="arm">ARM vs Fixed</option>
       <option value="rent">Rent vs Own</option>
+      <option value="dpa">DPA Programs</option>
+      <option value="dscr">DSCR Loans</option>
     </select>
   </div>
 
@@ -1972,6 +1974,69 @@ function renderLoomEmbed(videoId) {
 // MORTGAGE MATH
 //======================================================
 function num(v) { const n = readInputNumber(v); return n === '' ? 0 : n; }
+
+function annualTax(s, price, field) {
+  field = field || 'propTax';
+  if (!s) return 0;
+  return s.taxType === '$' ? num(s[field]) : price * num(s[field]) / 100;
+}
+function annualIns(s, price, field) {
+  field = field || 'insurance';
+  if (!s) return 0;
+  const pct = s.insType === 'pct' || s.insType === '%';
+  return pct ? price * num(s[field]) / 100 : num(s[field]);
+}
+function taxInsPair(opts) {
+  const s = opts.s || {};
+  const taxType = s.taxType === '$' ? '$' : 'pct';
+  const insType = (s.insType === 'pct' || s.insType === '%') ? 'pct' : '$';
+  const taxVal = s[opts.taxField || 'propTax'];
+  const insVal = s[opts.insField || 'insurance'];
+  return `
+    <div class="field">
+      <label>Property tax
+        <span class="toggle-pair">
+          <button type="button" class="ti-btn ${taxType !== '$' ? 'active' : ''}" data-ti="${opts.prefix}" data-kind="tax" data-to="pct">%</button>
+          <button type="button" class="ti-btn ${taxType === '$' ? 'active' : ''}" data-ti="${opts.prefix}" data-kind="tax" data-to="$">$</button>
+        </span>
+      </label>
+      <div class="input-wrap">${taxType === '$' ? '<span class="pre">$</span>' : ''}<input type="number" id="${opts.taxId}" value="${taxVal}" step="${taxType === '$' ? '50' : '0.01'}">${taxType === '$' ? '<span class="post">/yr</span>' : '<span class="post">%</span>'}</div>
+    </div>
+    <div class="field">
+      <label>Insurance
+        <span class="toggle-pair">
+          <button type="button" class="ti-btn ${insType !== 'pct' ? 'active' : ''}" data-ti="${opts.prefix}" data-kind="ins" data-to="$">$</button>
+          <button type="button" class="ti-btn ${insType === 'pct' ? 'active' : ''}" data-ti="${opts.prefix}" data-kind="ins" data-to="pct">%</button>
+        </span>
+      </label>
+      <div class="input-wrap">${insType !== 'pct' ? '<span class="pre">$</span>' : ''}<input type="number" id="${opts.insId}" value="${insVal}" step="${insType === 'pct' ? '0.01' : '50'}">${insType === 'pct' ? '<span class="post">%</span>' : '<span class="post">/yr</span>'}</div>
+    </div>`;
+}
+function registerTaxIns(prefix, cfg) {
+  document.querySelectorAll('.ti-btn[data-ti="' + prefix + '"]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const s = cfg.get();
+      const price = num(cfg.price());
+      const taxField = cfg.taxField || 'propTax';
+      const insField = cfg.insField || 'insurance';
+      if (btn.dataset.kind === 'tax') {
+        const cur = s.taxType === '$' ? '$' : 'pct';
+        const to = btn.dataset.to === '$' ? '$' : 'pct';
+        if (to === '$' && cur !== '$') s[taxField] = Math.round(price * num(s[taxField]) / 100);
+        if (to === 'pct' && cur === '$') s[taxField] = price > 0 ? +((num(s[taxField]) / price) * 100).toFixed(3) : 0;
+        s.taxType = to;
+      } else {
+        const cur = (s.insType === 'pct' || s.insType === '%') ? 'pct' : '$';
+        const to = btn.dataset.to === 'pct' ? 'pct' : '$';
+        if (to === 'pct' && cur !== 'pct') s[insField] = price > 0 ? +((num(s[insField]) / price) * 100).toFixed(3) : 0;
+        if (to === '$' && cur === 'pct') s[insField] = Math.round(price * num(s[insField]) / 100);
+        s.insType = to;
+      }
+      saveState();
+      cfg.render();
+    });
+  });
+}
 
 function monthlyPI(loan, annualRate, years) {
   if (loan <= 0 || years <= 0) return 0;
@@ -2228,8 +2293,8 @@ function prepaidContext(s) {
   const dp = s.dpType === 'pct' ? homePrice * num(s.downPmt)/100 : num(s.downPmt);
   const loan = s.loanOverride != null ? num(s.loanOverride) : Math.max(homePrice - dp, 0);
   const rate = num(s.rate) || num(s.newRate) || 0;
-  const annualTax = s.taxType === '$' ? num(s.propTax) : homePrice * num(s.propTax)/100;
-  const annualIns = s.insType === 'pct' ? homePrice * num(s.insurance)/100 : num(s.insurance);
+  const taxAnnual = annualTax(s, homePrice);
+  const insAnnual = annualIns(s, homePrice);
   const ltv = homePrice > 0 ? (loan/homePrice*100) : 100;
   const loanType = s.loanType || 'conventional';
   let pmiMonthly = 0;
@@ -2238,7 +2303,7 @@ function prepaidContext(s) {
   } else if (ltv > 80) {
     pmiMonthly = (loan * num(s.pmiRate || 0) / 100) / 12;
   }
-  return { loan, homePrice, rate, annualTax, annualIns, pmiMonthly };
+  return { loan, homePrice, rate, annualTax: taxAnnual, annualIns: insAnnual, pmiMonthly };
 }
 
 // Recompute all auto prepaid items in place; returns the new total
@@ -2265,7 +2330,7 @@ function calcDefaultPrepaids(s) {
 // STATE
 //======================================================
 const STORAGE_KEY = 'houzd-mortgage-review-v3';
-let state = { mode: 'standard', standard: null, buydown: null, fha: null, cashout: null, refi: null, arm: null, rent: null, heloc: null, bridge: null, netproceeds: null, construction: null, loomUrl: '', profiles: [], feeTemplate: null, prepaidTemplate: null };
+let state = { mode: 'standard', standard: null, buydown: null, fha: null, cashout: null, refi: null, arm: null, rent: null, heloc: null, bridge: null, netproceeds: null, construction: null, dpa: null, dscr: null, loomUrl: '', profiles: [], feeTemplate: null, prepaidTemplate: null };
 
 function saveState() { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) {} }
 function loadState() {
@@ -2284,6 +2349,8 @@ function loadState() {
   if (!state.construction) state.construction = defaultConstruction();
   if (!state.arm) state.arm = defaultARM();
   if (!state.rent) state.rent = defaultRent();
+  if (!state.dpa) state.dpa = defaultDPA();
+  if (!state.dscr) state.dscr = defaultDSCR();
   // Ensure every fee item has a 'type' field (migration for older saves)
   function migrateFeeTypes(fees) {
     if (!fees) return;
@@ -2412,6 +2479,8 @@ function resetCurrentMode() {
   if (state.mode === 'construction') state.construction = defaultConstruction();
   if (state.mode === 'arm') state.arm = defaultARM();
   if (state.mode === 'rent') state.rent = defaultRent();
+  if (state.mode === 'dpa') state.dpa = defaultDPA();
+  if (state.mode === 'dscr') state.dscr = defaultDSCR();
   saveState();
   renderMode();
 }
@@ -3536,8 +3605,8 @@ function calcBuydown(s) {
   const loan = baseLoan;
   const noteRate = num(s.rate);
   const years = num(s.term);
-  const monthlyTax = homePrice * num(s.propTax)/100 / 12;
-  const monthlyIns = num(s.insurance) / 12;
+  const monthlyTax = annualTax(s, homePrice) / 12;
+  const monthlyIns = annualIns(s, homePrice) / 12;
   const hoa = num(s.hoa);
   const ltv = homePrice > 0 ? baseLoan / homePrice * 100 : 0;
   const isFHA = financedMI > 0;
@@ -3656,8 +3725,7 @@ function renderBuydown() {
                 </div>
               </div>
             </div>
-            ${fld('Property tax', `<input type="number" id="bd_propTax" value="${s.propTax}" step="0.05"><span class="post">%</span>`)}
-            ${fld('Insurance <span class="hint">/yr</span>', `<span class="pre">$</span><input type="number" id="bd_insurance" value="${s.insurance}" step="50">`)}
+            ${taxInsPair({ prefix:'bd', s, taxId:'bd_propTax', insId:'bd_insurance' })}
             ${fld('HOA <span class="hint">/mo</span>', `<span class="pre">$</span><input type="number" id="bd_hoa" value="${s.hoa}" step="10">`)}
             ${fld('PMI / MIP rate <span class="hint">/yr</span>', `<input type="number" id="bd_pmiRate" value="${s.pmiRate}" step="0.05"><span class="post">%</span>`)}
             ${fld('Upfront fee <span class="hint">in closing costs, not added to the loan</span>', `<span class="pre">$</span><input type="number" id="bd_financedMI" value="${s.financedMI || 0}" step="50">`, 'full')}
@@ -3730,6 +3798,7 @@ function renderBuydown() {
     if (num(s.downPmt) > 0 && num(s.downPmt) < 100) s.downPmt = Math.round(num(s.homePrice) * num(s.downPmt) / 100);
     s.dpType = '$'; saveState(); renderBuydown();
   });
+  registerTaxIns('bd', { get: () => state.buydown, price: () => state.buydown.homePrice, render: renderBuydown });
   renderBuydownOutputs();
   setTimeout(() => initModeBuilders('bd'), 0);
 }
@@ -3797,6 +3866,11 @@ function renderBuydownOutputs() {
 // ---- Shared flyer shell: CSS + header + footer + print bar, used by every tab ----
 // opts: { title, tag, subtitle, clientName, cardCount, heroHTML, bodyHTML, docTitle }
 function openFlyer(opts) {
+  opts = opts || {};
+  if (window.__flyerOpts) {
+    if (window.__flyerOpts.returnHTML) opts.returnHTML = true;
+    if (window.__flyerOpts.clientName && !String(opts.clientName || '').trim()) opts.clientName = window.__flyerOpts.clientName;
+  }
   const lo = currentLO();
   const loName = lo.name;
   const loPhone = lo.phone;
@@ -3939,7 +4013,8 @@ function flyerBars(parts) {
   ).join('');
 }
 
-function generateBuydownFlyer() {
+function generateBuydownFlyer(opts) {
+  opts = opts || {};
   const s = state.buydown;
   const c = calcBuydown(s);
   const sched = c.scheduleYears;
@@ -4000,7 +4075,7 @@ function generateBuydownFlyer() {
   const creditPctOfPrice = c.homePrice > 0 ? (sellerCredit / c.homePrice * 100) : 0;
   const creditSource = s.paidBy === 'lender' ? 'lender credit' : 'seller credit';
 
-  const clientName = (s.flyerName || '').trim();
+  const clientName = (opts.clientName != null ? String(opts.clientName) : (s.flyerName || '')).trim();
   const today = new Date().toLocaleDateString('en-US', { year:'numeric', month:'short', day:'numeric' });
 
   const cardsHTML = cardData.map((cd, i) => {
@@ -4155,6 +4230,7 @@ html,body { font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; color:#1C23
 </div>
 </body></html>`;
 
+  if ((opts && opts.returnHTML) || (window.__flyerOpts && window.__flyerOpts.returnHTML)) return flyer;
   const w = window.open('', '_blank');
   if (!w) { alert('Please allow pop-ups to generate the flyer.'); return; }
   w.document.open();
@@ -4205,8 +4281,8 @@ function refreshSidePrepaids(s, which) {
 function calcFHAvsConv(s) {
   const homePrice = num(s.homePrice);
   const term = num(s.term);
-  const monthlyTax = homePrice * num(s.propTax)/100 / 12;
-  const monthlyIns = num(s.insurance) / 12;
+  const monthlyTax = annualTax(s, homePrice) / 12;
+  const monthlyIns = annualIns(s, homePrice) / 12;
   const hoa = num(s.hoa);
 
   const fhaDownAmt = homePrice * num(s.fhaDown) / 100;
@@ -4278,8 +4354,7 @@ function renderFHA() {
           <div class="field-grid">
             ${sliderFld('Home price', 'fha_homePrice', s.homePrice, 100000, 2000000, 5000, '<span class="pre">$</span>')}
             ${fld('Term', `<input type="number" id="fha_term" value="${s.term}" step="1"><span class="post">yr</span>`)}
-            ${fld('Property tax', `<input type="number" id="fha_propTax" value="${s.propTax}" step="0.05"><span class="post">%</span>`)}
-            ${fld('Insurance', `<span class="pre">$</span><input type="number" id="fha_insurance" value="${s.insurance}" step="50">`)}
+            ${taxInsPair({ prefix:'fha', s, taxId:'fha_propTax', insId:'fha_insurance' })}
             ${fld('HOA <span class="hint">/mo</span>', `<span class="pre">$</span><input type="number" id="fha_hoa" value="${s.hoa}" step="10">`)}
             ${fld('Appreciation', `<input type="number" id="fha_apprRate" value="${s.apprRate}" step="0.25"><span class="post">%</span>`)}
           </div>
@@ -4371,6 +4446,7 @@ function renderFHA() {
   wireFlyerName('fha', state.fha);
   wireFHAFeeBuilders();
   ['homePrice','fhaDown','rate_fha','convDown','rate_conv'].forEach(k => syncSlider('fha_' + k));
+  registerTaxIns('fha', { get: () => state.fha, price: () => state.fha.homePrice, render: renderFHA });
   renderFHAOutputs();
 }
 
@@ -4521,8 +4597,8 @@ function interestOverMonths(rows, months) {
 }
 function calcCashout(s) {
   const homeValue = num(s.homeValue);
-  const monthlyTax = homeValue * num(s.propTax)/100 / 12;
-  const monthlyIns = num(s.insurance)/12;
+  const monthlyTax = annualTax(s, homeValue) / 12;
+  const monthlyIns = annualIns(s, homeValue) / 12;
   const hoa = num(s.hoa);
   const currentPI = monthlyPI(num(s.currentBalance), num(s.currentRate), num(s.currentRemainingYears));
   const currentPITI = currentPI + monthlyTax + monthlyIns + hoa;
@@ -4580,8 +4656,7 @@ function renderCashout() {
             ${sliderFld('Current balance', 'co_currentBalance', s.currentBalance, 0, 2000000, 1000, '<span class="pre">$</span>')}
             ${sliderFld('Current rate', 'co_currentRate', s.currentRate, 2, 12, 0.125, '', '<span class="post">%</span>')}
             ${fld('Years remaining', `<input type="number" id="co_currentRemainingYears" value="${s.currentRemainingYears}" step="1"><span class="post">yr</span>`)}
-            ${fld('Property tax', `<input type="number" id="co_propTax" value="${s.propTax}" step="0.05"><span class="post">%</span>`)}
-            ${fld('Insurance', `<span class="pre">$</span><input type="number" id="co_insurance" value="${s.insurance}" step="50">`)}
+            ${taxInsPair({ prefix:'co', s, taxId:'co_propTax', insId:'co_insurance' })}
             ${fld('HOA', `<span class="pre">$</span><input type="number" id="co_hoa" value="${s.hoa}" step="10">`)}
           </div>
         </div>
@@ -4671,6 +4746,7 @@ function renderCashout() {
     saveState(); renderCashoutDebts();
   });
   renderCashoutDebts();
+  registerTaxIns('co', { get: () => state.cashout, price: () => state.cashout.homeValue, render: renderCashout });
   renderCashoutOutputs();
   setTimeout(() => initModeBuilders('co'), 0);
 }
@@ -4789,11 +4865,11 @@ function calcRefi(s) {
   const newTerm = num(s.newTerm);
   const rollIn = !!s.rollClosingIn;
   const rollEscrowIn = !!s.rollEscrowIn;
-  const monthlyTax = s.taxType === '$' ? num(s.propTax)/12 : homeValue * num(s.propTax)/100/12;
-  const monthlyIns = s.insType === '%' ? homeValue * num(s.insurance)/100/12 : num(s.insurance)/12;
+  const monthlyTax = annualTax(s, homeValue) / 12;
+  const monthlyIns = annualIns(s, homeValue) / 12;
   const monthlyEscrow = monthlyTax + monthlyIns;
-  const taxPct = s.taxType === '$' ? (homeValue > 0 ? (num(s.propTax) / homeValue) * 100 : 0) : num(s.propTax);
-  const insDollars = s.insType === '%' ? homeValue * num(s.insurance) / 100 : num(s.insurance);
+  const taxPct = homeValue > 0 ? annualTax(s, homeValue) / homeValue * 100 : 0;
+  const insDollars = annualIns(s, homeValue);
 
   let closing = s.fees ? feesToTotal(s.fees, { loan: curBal, price: homeValue }) : num(s.newClosingCosts);
   let prepaidsTotal = 0;
@@ -4856,30 +4932,7 @@ function renderRefi() {
             ${sliderFld('Current balance', 'rf_currentBalance', s.currentBalance, 0, 2000000, 1000, '<span class="pre">$</span>')}
             ${sliderFld('Current rate', 'rf_currentRate', s.currentRate, 2, 12, 0.125, '', '<span class="post">%</span>')}
             ${fld('Years remaining', `<input type="number" id="rf_currentRemainingYears" value="${s.currentRemainingYears}" step="1"><span class="post">yr</span>`)}
-            <div class="field full">
-              <label>Property tax
-                <span class="toggle-pair">
-                  <button id="rf_taxPct" class="${(s.taxType||'pct')==='pct'?'active':''}">%</button>
-                  <button id="rf_taxDol" class="${s.taxType==='$'?'active':''}">$</button>
-                </span>
-              </label>
-              <div class="input-wrap">
-                ${s.taxType==='$' ? '' : ''}<input type="number" id="rf_propTax" value="${s.propTax||0.6}" step="${s.taxType==='$'?'100':'0.05'}">
-                <span class="post">${s.taxType==='$' ? '/yr' : '%'}</span>
-              </div>
-            </div>
-            <div class="field full">
-              <label>Insurance
-                <span class="toggle-pair">
-                  <button id="rf_insDol" class="${(!s.insType||s.insType==='$')?'active':''}">$</button>
-                  <button id="rf_insPct" class="${s.insType==='%'?'active':''}">%</button>
-                </span>
-              </label>
-              <div class="input-wrap">
-                ${(!s.insType||s.insType==='$') ? '<span class="pre">$</span>' : ''}<input type="number" id="rf_insurance" value="${s.insurance||1200}" step="${s.insType==='%'?'0.05':'50'}">
-                <span class="post">${s.insType==='%' ? '%' : '/yr'}</span>
-              </div>
-            </div>
+            ${taxInsPair({ prefix:'rf', s, taxId:'rf_propTax', insId:'rf_insurance' })}
           </div>
         </div>
         <div class="scenario" data-idx="1">
@@ -4970,29 +5023,7 @@ function renderRefi() {
     });
   });
 
-  // Tax type toggles
-  document.getElementById('rf_taxPct')?.addEventListener('click', () => {
-    if (state.refi.taxType === '$') { state.refi.taxType = 'pct'; state.refi.propTax = 0.6; }
-    saveState(); renderRefi();
-  });
-  document.getElementById('rf_taxDol')?.addEventListener('click', () => {
-    if (state.refi.taxType !== '$') {
-      const hv = num(state.refi.homeValue);
-      state.refi.propTax = Math.round(hv * num(state.refi.propTax||0.6)/100);  // annual $
-      state.refi.taxType = '$';
-    }
-    saveState(); renderRefi();
-  });
-
-  // Insurance type toggles
-  document.getElementById('rf_insDol')?.addEventListener('click', () => {
-    if (state.refi.insType === '%') { state.refi.insType = '$'; state.refi.insurance = 1200; }
-    saveState(); renderRefi();
-  });
-  document.getElementById('rf_insPct')?.addEventListener('click', () => {
-    if (state.refi.insType !== '%') { state.refi.insType = '%'; state.refi.insurance = 0.25; }
-    saveState(); renderRefi();
-  });
+  registerTaxIns('rf', { get: () => state.refi, price: () => state.refi.homeValue, render: renderRefi });
 
   // Checkboxes
   document.getElementById('rf_rollClosingIn').addEventListener('change', e => { state.refi.rollClosingIn = e.target.checked; saveState(); renderRefiOutputs(); });
@@ -5077,8 +5108,8 @@ function calcARM(s) {
   const dp = s.dpType === 'pct' ? homePrice * num(s.downPmt)/100 : num(s.downPmt);
   const loan = Math.max(homePrice - dp, 0);
   const years = num(s.term);
-  const monthlyTax = homePrice * num(s.propTax)/100 / 12;
-  const monthlyIns = num(s.insurance) / 12;
+  const monthlyTax = annualTax(s, homePrice) / 12;
+  const monthlyIns = annualIns(s, homePrice) / 12;
   const hoa = num(s.hoa);
   const fixedYears = parseInt(String(s.armType).split('/')[0], 10) || 7;
 
@@ -5150,8 +5181,7 @@ function renderARM() {
               <div class="input-wrap">${s.dpType === '$' ? '<span class="pre">$</span>' : ''}<input type="number" id="arm_downPmt" value="${s.downPmt}" step="${s.dpType==='pct'?'0.5':'1000'}">${s.dpType === 'pct' ? '<span class="post">%</span>' : ''}</div>
             </div>
             ${fld('Term', `<input type="number" id="arm_term" value="${s.term}" step="1"><span class="post">yr</span>`)}
-            ${fld('Property tax', `<input type="number" id="arm_propTax" value="${s.propTax}" step="0.05"><span class="post">%</span>`)}
-            ${fld('Insurance <span class="hint">/yr</span>', `<span class="pre">$</span><input type="number" id="arm_insurance" value="${s.insurance}" step="50">`)}
+            ${taxInsPair({ prefix:'arm', s, taxId:'arm_propTax', insId:'arm_insurance' })}
             ${fld('HOA <span class="hint">/mo</span>', `<span class="pre">$</span><input type="number" id="arm_hoa" value="${s.hoa}" step="10">`)}
           </div>
         </div>
@@ -5212,6 +5242,7 @@ function renderARM() {
     if (num(a.downPmt) > 0 && num(a.downPmt) < 100) a.downPmt = Math.round(num(a.homePrice) * num(a.downPmt) / 100);
     a.dpType = '$'; saveState(); renderARM();
   });
+  registerTaxIns('arm', { get: () => state.arm, price: () => state.arm.homePrice, render: renderARM });
   renderARMOutputs();
 }
 function renderARMOutputs() {
@@ -5284,8 +5315,8 @@ function calcRent(s) {
   const monthlyAppr = Math.pow(1 + num(s.apprRate) / 100, 1 / 12) - 1;
   const maintRate = num(s.maintRate) / 100;
   const monthlyReturn = num(s.investReturnRate) / 100 / 12;
-  const taxRate = num(s.propTax) / 100;
-  const baseIns = num(s.insurance);
+  const baseTax = annualTax(s, homePrice);
+  const baseIns = annualIns(s, homePrice);
   const baseHoa = num(s.hoa);
   const pmiMonthly = plan.applies ? (loan * plan.rate / 100) / 12 : 0;
 
@@ -5309,7 +5340,7 @@ function calcRent(s) {
     bal = Math.max(bal - principal, 0);
     const ltv = homePrice > 0 ? (bal / homePrice) * 100 : 0;
     const pmi = plan.applies && ltv > plan.cutoff ? pmiMonthly : 0;
-    const monthlyTax = value * taxRate / 12;
+    const monthlyTax = homePrice > 0 ? (baseTax * (value / homePrice)) / 12 : baseTax / 12;
     const monthlyIns = homePrice > 0 ? (baseIns * (value / homePrice)) / 12 : baseIns / 12;
     const maint = value * maintRate / 12;
     cumMaint += maint;
@@ -5328,7 +5359,7 @@ function calcRent(s) {
     }
   }
   const last = yearly[yearly.length - 1];
-  const initialTax = homePrice * taxRate / 12;
+  const initialTax = baseTax / 12;
   const initialIns = baseIns / 12;
   const ownInitialPITI = pi + initialTax + initialIns + baseHoa + pmiMonthly;
   return {
@@ -5375,8 +5406,7 @@ function renderRent() {
             </div>
             ${sliderFld('Rate', 'rt_rate', s.rate, 2, 12, 0.125, '', '<span class="post">%</span>')}
             ${fld('Term', `<input type="number" id="rt_term" value="${s.term}" step="1"><span class="post">yr</span>`)}
-            ${fld('Property tax', `<input type="number" id="rt_propTax" value="${s.propTax}" step="0.05"><span class="post">%</span>`)}
-            ${fld('Insurance', `<span class="pre">$</span><input type="number" id="rt_insurance" value="${s.insurance}" step="50">`)}
+            ${taxInsPair({ prefix:'rt', s, taxId:'rt_propTax', insId:'rt_insurance' })}
             ${fld('HOA', `<span class="pre">$</span><input type="number" id="rt_hoa" value="${s.hoa}" step="10">`)}
             ${fld('PMI rate', `<input type="number" id="rt_pmiRate" value="${s.pmiRate}" step="0.05"><span class="post">%</span>`)}
             ${fld('Appreciation', `<input type="number" id="rt_apprRate" value="${s.apprRate}" step="0.25"><span class="post">%</span>`)}
@@ -5418,6 +5448,7 @@ function renderRent() {
     if (num(r.downPmt) > 0 && num(r.downPmt) < 100) r.downPmt = Math.round(num(r.homePrice) * num(r.downPmt) / 100);
     r.dpType = '$'; saveState(); renderRent();
   });
+  registerTaxIns('rt', { get: () => state.rent, price: () => state.rent.homePrice, render: renderRent });
   renderRentOutputs();
 }
 function renderRentOutputs() {
@@ -5500,7 +5531,383 @@ function setIntro(show, html = '') {
 //======================================================
 // MODE DISPATCH
 //======================================================
-const MODES = { standard: renderStandard, buydown: renderBuydown, fha: renderFHA, cashout: renderCashout, refi: renderRefi, arm: renderARM, rent: renderRent, heloc: renderHELOC, bridge: renderBridge, netproceeds: renderNetProceeds, construction: renderConstruction };
+function defaultDPAProgram(name, assistance, rate) {
+  return { name, assistanceType: '$', assistance, downPct: 3.5, rate, term: 30, feeType: '$', fees: 4500, repayable: false, secondRate: 0, secondTerm: 30 };
+}
+function defaultDPA() {
+  return {
+    homePrice: 450000, propTax: 0.6, taxType: 'pct', insurance: 1500, insType: '$', hoa: 0,
+    programs: [defaultDPAProgram('Program A', 15000, 6.5), defaultDPAProgram('Program B', 10000, 6.25)],
+  };
+}
+function calcOneDPA(shared, p) {
+  const price = num(shared.homePrice);
+  const assist = p.assistanceType === 'pct' ? price * num(p.assistance) / 100 : num(p.assistance);
+  const down = price * num(p.downPct) / 100;
+  const loan = Math.max(price - down, 0);
+  const fee = p.feeType === 'pct' ? loan * num(p.fees) / 100 : num(p.fees);
+  const cashDown = Math.max(down - assist, 0);
+  const leftover = Math.max(assist - down, 0);
+  const cashToClose = Math.max(cashDown + fee - leftover, 0);
+  const pi = monthlyPI(loan, num(p.rate), num(p.term));
+  const secondBal = p.repayable ? assist : 0;
+  const secondPI = (p.repayable && num(p.secondRate) > 0) ? monthlyPI(secondBal, num(p.secondRate), num(p.secondTerm) || 30) : 0;
+  const tax = annualTax(shared, price) / 12;
+  const ins = annualIns(shared, price) / 12;
+  const hoa = num(shared.hoa);
+  return { price, assist, down, loan, fee, cashDown, cashToClose, pi, secondPI, secondBal, tax, ins, hoa, piti: pi + secondPI + tax + ins + hoa };
+}
+function calcDPA(s) {
+  const programs = (s.programs || []).slice(0, 2);
+  return { programs: programs.map(p => ({ src: p, c: calcOneDPA(s, p) })) };
+}
+function dpaMoneyField(label, id, value, type) {
+  const isPct = type === 'pct';
+  return `<div class="field">
+    <label>${label}
+      <span class="toggle-pair">
+        <button type="button" class="dpa-unit ${isPct ? '' : 'active'}" data-dpa-id="${id}" data-to="$">$</button>
+        <button type="button" class="dpa-unit ${isPct ? 'active' : ''}" data-dpa-id="${id}" data-to="pct">%</button>
+      </span>
+    </label>
+    <div class="input-wrap">${isPct ? '' : '<span class="pre">$</span>'}<input type="number" id="${id}" value="${value}" step="${isPct ? '0.05' : '100'}">${isPct ? '<span class="post">%</span>' : ''}</div>
+  </div>`;
+}
+function renderDPA() {
+  if (!state.dpa) state.dpa = defaultDPA();
+  const s = state.dpa;
+  setSubtitle('Down payment assistance — compare two programs');
+  setIntro(true, `Compare two <strong>down payment assistance</strong> programs on the same purchase. Assistance can be a percent of price or a dollar amount. A forgivable grant reduces cash to close. A repayable second lien still covers that cash, and a rate above zero adds a monthly payment. A 0% second lien is treated as deferred.`);
+  const cards = (s.programs || []).map((p, i) => `<div class="scenario">
+    <div class="accent-bar"></div>
+    <div class="scenario-head"><input class="name-input" data-dpa="${i}" data-field="name" value="${escapeHtml(p.name || ('Program ' + String.fromCharCode(65 + i)))}"></div>
+    <div class="field-grid">
+      ${dpaMoneyField('Assistance', 'dpa_assist_' + i, p.assistance, p.assistanceType)}
+      ${fld('Down payment required', `<input type="number" data-dpa="${i}" data-field="downPct" value="${p.downPct}" step="0.5"><span class="post">%</span>`)}
+      ${fld('First-lien rate', `<input type="number" data-dpa="${i}" data-field="rate" value="${p.rate}" step="0.125"><span class="post">%</span>`)}
+      ${fld('Term', `<input type="number" data-dpa="${i}" data-field="term" value="${p.term}" step="1"><span class="post">yr</span>`)}
+      ${dpaMoneyField('Closing costs', 'dpa_fee_' + i, p.fees, p.feeType)}
+      <div class="field full">
+        <label style="display:flex;gap:8px;align-items:center;text-transform:none;letter-spacing:0;font-size:13px;font-weight:500;color:var(--text);">
+          <input type="checkbox" data-dpa="${i}" data-field="repayable" ${p.repayable ? 'checked' : ''}> Repaid as a second lien
+        </label>
+      </div>
+      ${fld('Second-lien rate <span class="hint">0 = deferred</span>', `<input type="number" data-dpa="${i}" data-field="secondRate" value="${p.secondRate}" step="0.125"><span class="post">%</span>`)}
+      ${fld('Second-lien term', `<input type="number" data-dpa="${i}" data-field="secondTerm" value="${p.secondTerm}" step="1"><span class="post">yr</span>`)}
+    </div>
+  </div>`).join('');
+  document.getElementById('modeContent').innerHTML = `
+    <section>
+      <div class="section-row"><div class="section-title">Purchase</div></div>
+      <div class="scenarios" style="grid-template-columns:minmax(0,560px);">
+        <div class="card"><div class="field-grid">
+          ${sliderFld('Home price', 'dpa_homePrice', s.homePrice, 100000, 2000000, 5000, '<span class="pre">$</span>')}
+          ${taxInsPair({ prefix:'dpa', s, taxId:'dpa_propTax', insId:'dpa_insurance' })}
+          ${fld('HOA <span class="hint">/mo</span>', `<span class="pre">$</span><input type="number" id="dpa_hoa" value="${s.hoa}" step="10">`)}
+        </div></div>
+      </div>
+    </section>
+    <section>
+      <div class="section-row"><div class="section-title">Programs</div><div class="section-row-meta">Assistance % is of the purchase price. Closing-cost % is of the first-lien loan.</div></div>
+      <div class="scenarios">${cards}</div>
+    </section>
+    <section><div class="section-row"><div class="section-title">Headline numbers</div></div><div id="dpaStats" class="stat-grid"></div></section>
+    <section><div class="section-row"><div class="section-title">Comparison</div></div><div class="panel"><table class="compare" id="dpaCompare"></table></div></section>`;
+  ['homePrice','propTax','insurance','hoa'].forEach(k => {
+    const el = document.getElementById('dpa_' + k);
+    if (el) el.addEventListener('input', () => { state.dpa[k] = num(el.value); saveState(); renderDPAOutputs(); });
+  });
+  syncSlider('dpa_homePrice');
+  document.querySelectorAll('[data-dpa]').forEach(el => {
+    el.addEventListener('input', () => {
+      const p = state.dpa.programs[parseInt(el.dataset.dpa, 10)];
+      if (!p) return;
+      p[el.dataset.field] = el.dataset.field === 'name' ? el.value : (el.type === 'checkbox' ? el.checked : num(el.value));
+      saveState();
+      renderDPAOutputs();
+    });
+    el.addEventListener('change', () => {
+      if (el.type !== 'checkbox') return;
+      const p = state.dpa.programs[parseInt(el.dataset.dpa, 10)];
+      if (!p) return;
+      p.repayable = el.checked;
+      saveState();
+      renderDPAOutputs();
+    });
+  });
+  document.querySelectorAll('.dpa-unit').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.dpaId || '';
+      const assist = id.indexOf('assist') >= 0;
+      const i = parseInt(id.split('_').pop(), 10);
+      const p = state.dpa.programs[i];
+      if (!p) return;
+      const price = num(state.dpa.homePrice);
+      const loan = Math.max(price - price * num(p.downPct) / 100, 0);
+      const to = btn.dataset.to;
+      if (assist) {
+        const cur = p.assistanceType === 'pct' ? 'pct' : '$';
+        if (to === 'pct' && cur !== 'pct') p.assistance = price > 0 ? +((num(p.assistance) / price) * 100).toFixed(3) : 0;
+        if (to === '$' && cur === 'pct') p.assistance = Math.round(price * num(p.assistance) / 100);
+        p.assistanceType = to === 'pct' ? 'pct' : '$';
+      } else {
+        const cur = p.feeType === 'pct' ? 'pct' : '$';
+        if (to === 'pct' && cur !== 'pct') p.fees = loan > 0 ? +((num(p.fees) / loan) * 100).toFixed(3) : 0;
+        if (to === '$' && cur === 'pct') p.fees = Math.round(loan * num(p.fees) / 100);
+        p.feeType = to === 'pct' ? 'pct' : '$';
+      }
+      saveState();
+      renderDPA();
+    });
+  });
+  registerTaxIns('dpa', { get: () => state.dpa, price: () => state.dpa.homePrice, render: renderDPA });
+  renderDPAOutputs();
+}
+function renderDPAOutputs() {
+  const pack = calcDPA(state.dpa);
+  const stats = document.getElementById('dpaStats');
+  const table = document.getElementById('dpaCompare');
+  if (!stats || !table) return;
+  stats.innerHTML = pack.programs.map((row, i) => `<div class="stat ${i === 0 ? 'highlight' : ''}">
+    <div class="stat-label">${escapeHtml(row.src.name || 'Program')}</div>
+    <div class="stat-value">${fmt$(row.c.piti)}</div>
+    <div class="stat-sub">${fmt$(row.c.cashToClose)} cash to close · ${fmt$(row.c.assist)} assistance</div>
+  </div>`).join('');
+  const a = pack.programs[0], b = pack.programs[1];
+  const cols = pack.programs.map(r => escapeHtml(r.src.name || 'Program'));
+  const line = (label, fn) => `<tr><td>${label}</td>${pack.programs.map(r => `<td>${fn(r)}</td>`).join('')}</tr>`;
+  table.innerHTML = `<thead><tr><th></th>${cols.map(c => `<th>${c}</th>`).join('')}</tr></thead><tbody>
+    ${line('Assistance', r => fmt$(r.c.assist))}
+    ${line('First-lien loan', r => fmt$(r.c.loan))}
+    ${line('Second lien', r => r.src.repayable ? fmt$(r.c.secondBal) : '—')}
+    ${line('Closing costs', r => fmt$(r.c.fee))}
+    ${line('Cash to close', r => fmt$(r.c.cashToClose))}
+    ${line('First-lien P&amp;I', r => fmt$(r.c.pi))}
+    ${line('Second-lien payment', r => fmt$(r.c.secondPI))}
+    ${line('Taxes', r => fmt$(r.c.tax))}
+    ${line('Insurance', r => fmt$(r.c.ins))}
+    <tr class="headline"><td>Monthly housing</td>${pack.programs.map(r => `<td>${fmt$(r.c.piti)}</td>`).join('')}</tr>
+  </tbody>`;
+  if (!b) return;
+}
+function buildDPASections() {
+  const pack = calcDPA(state.dpa);
+  return [{
+    title: 'Down Payment Assistance',
+    type: 'table',
+    cols: pack.programs.map(r => r.src.name || 'Program'),
+    rows: [
+      { section: 'Assistance' },
+      { label: 'Assistance', vals: pack.programs.map(r => fmt$(r.c.assist)) },
+      { label: 'First-lien loan', vals: pack.programs.map(r => fmt$(r.c.loan)) },
+      { label: 'Cash to close', vals: pack.programs.map(r => fmt$(r.c.cashToClose)), total: true },
+      { section: 'Monthly' },
+      { label: 'Housing payment', vals: pack.programs.map(r => fmt$(r.c.piti)), total: true },
+      { label: 'Second-lien payment', vals: pack.programs.map(r => fmt$(r.c.secondPI)) },
+    ],
+  }, {
+    title: 'Summary', type: 'summary',
+    html: pack.programs.map(r => `<p><strong>${escapeHtml(r.src.name)}</strong> brings ${fmt$(r.c.assist)} of assistance. Cash to close is ${fmt$(r.c.cashToClose)} and the monthly housing payment is ${fmt$(r.c.piti)}${r.src.repayable ? ', including a ' + (num(r.src.secondRate) > 0 ? 'repaid' : 'deferred') + ' second lien' : ''}.</p>`).join(''),
+  }];
+}
+function generateDPAFlyer(opts) {
+  opts = opts || {};
+  const pack = calcDPA(state.dpa);
+  const idx = Math.max(0, Math.min(pack.programs.length - 1, opts.idx || 0));
+  const rows = pack.programs.map((r, i) => ({
+    yr: r.src.name || ('Program ' + String.fromCharCode(65 + i)),
+    rate: `${num(r.src.rate).toFixed(3)}% · ${fmt$(r.c.assist)} assistance`,
+    amt: fmt$(r.c.piti),
+    cls: i === idx ? 'y1' : 'soft',
+    badge: i === idx ? 'Selected' : '',
+    permo: 'per month',
+  }));
+  const body = `<div class="cols">${pack.programs.map(r => `<div class="col"><h2>${escapeHtml(r.src.name || 'Program')}</h2>
+    <div class="row"><span class="lbl">Assistance</span><span class="val">${fmt$(r.c.assist)}</span></div>
+    <div class="row"><span class="lbl">First-lien loan</span><span class="val">${fmt$(r.c.loan)}</span></div>
+    <div class="row"><span class="lbl">Closing costs</span><span class="val">${fmt$(r.c.fee)}</span></div>
+    <div class="row"><span class="lbl">Cash to close</span><span class="val">${fmt$(r.c.cashToClose)}</span></div>
+    <div class="row tot"><span class="lbl">Monthly housing</span><span class="val">${fmt$(r.c.piti)}</span></div>
+  </div>`).join('')}</div>`;
+  return openFlyer({
+    docTitle: 'Houzd DPA Comparison',
+    tag: 'Down Payment Assistance',
+    title: 'Two Assistance Programs, Side by Side',
+    subtitle: `<strong>${fmt$(num(state.dpa.homePrice))}</strong> purchase`,
+    clientName: opts.clientName || '',
+    cardCount: rows.length,
+    heroHTML: flyerCards(rows),
+    bodyHTML: body,
+    returnHTML: !!opts.returnHTML,
+    disclaimer: 'Down payment assistance estimates only. Program rules, income limits, forgiveness, and second-lien terms vary by provider and must be confirmed. This is not a commitment to lend.',
+  });
+}
+
+function defaultDSCRLoan(name, rate, ltv) {
+  return { name, rate, term: 30, ltv, feeType: '$', fees: 8000 };
+}
+function defaultDSCR() {
+  return {
+    price: 400000, rent: 3200, propTax: 0.8, taxType: 'pct', insurance: 1800, insType: '$', hoa: 0,
+    loans: [defaultDSCRLoan('Loan A', 7.25, 75), defaultDSCRLoan('Loan B', 6.875, 70)],
+  };
+}
+function calcOneDSCR(shared, loan) {
+  const price = num(shared.price);
+  const amount = price * num(loan.ltv) / 100;
+  const down = Math.max(price - amount, 0);
+  const fee = loan.feeType === 'pct' ? amount * num(loan.fees) / 100 : num(loan.fees);
+  const pi = monthlyPI(amount, num(loan.rate), num(loan.term));
+  const tax = annualTax(shared, price) / 12;
+  const ins = annualIns(shared, price) / 12;
+  const hoa = num(shared.hoa);
+  const pitia = pi + tax + ins + hoa;
+  const rent = num(shared.rent);
+  const dscr = pitia > 0 ? rent / pitia : 0;
+  return { price, amount, down, fee, cashToClose: down + fee, pi, tax, ins, hoa, pitia, rent, dscr, cashFlow: rent - pitia };
+}
+function calcDSCR(s) {
+  return { loans: (s.loans || []).slice(0, 2).map(loan => ({ src: loan, c: calcOneDSCR(s, loan) })) };
+}
+function renderDSCR() {
+  if (!state.dscr) state.dscr = defaultDSCR();
+  const s = state.dscr;
+  setSubtitle('DSCR loans — compare two investor scenarios');
+  setIntro(true, `A <strong>DSCR</strong> loan is sized off the property's rent. The ratio here is monthly rent divided by principal, interest, taxes, insurance, and HOA. A result above 1.00 means the rent covers that payment. This is an estimate for comparison, not an underwriting decision.`);
+  const cards = (s.loans || []).map((loan, i) => `<div class="scenario">
+    <div class="accent-bar"></div>
+    <div class="scenario-head"><input class="name-input" data-dscr="${i}" data-field="name" value="${escapeHtml(loan.name || ('Loan ' + String.fromCharCode(65 + i)))}"></div>
+    <div class="field-grid">
+      ${fld('Rate', `<input type="number" data-dscr="${i}" data-field="rate" value="${loan.rate}" step="0.125"><span class="post">%</span>`)}
+      ${fld('Term', `<input type="number" data-dscr="${i}" data-field="term" value="${loan.term}" step="1"><span class="post">yr</span>`)}
+      ${fld('LTV', `<input type="number" data-dscr="${i}" data-field="ltv" value="${loan.ltv}" step="1"><span class="post">%</span>`)}
+      ${dpaMoneyField('Closing costs', 'dscr_fee_' + i, loan.fees, loan.feeType)}
+    </div>
+  </div>`).join('');
+  document.getElementById('modeContent').innerHTML = `
+    <section>
+      <div class="section-row"><div class="section-title">Property</div></div>
+      <div class="scenarios" style="grid-template-columns:minmax(0,560px);">
+        <div class="card"><div class="field-grid">
+          ${sliderFld('Property value', 'dscr_price', s.price, 100000, 3000000, 5000, '<span class="pre">$</span>')}
+          ${sliderFld('Monthly rent', 'dscr_rent', s.rent, 500, 20000, 50, '<span class="pre">$</span>')}
+          ${taxInsPair({ prefix:'dscr', s, taxId:'dscr_propTax', insId:'dscr_insurance' })}
+          ${fld('HOA <span class="hint">/mo</span>', `<span class="pre">$</span><input type="number" id="dscr_hoa" value="${s.hoa}" step="10">`)}
+        </div></div>
+      </div>
+    </section>
+    <section>
+      <div class="section-row"><div class="section-title">Loans</div><div class="section-row-meta">Closing-cost % is of the loan amount.</div></div>
+      <div class="scenarios">${cards}</div>
+    </section>
+    <section><div class="section-row"><div class="section-title">Headline numbers</div></div><div id="dscrStats" class="stat-grid"></div></section>
+    <section><div class="section-row"><div class="section-title">Comparison</div></div><div class="panel"><table class="compare" id="dscrCompare"></table></div></section>`;
+  ['price','rent','propTax','insurance','hoa'].forEach(k => {
+    const el = document.getElementById('dscr_' + k);
+    if (el) el.addEventListener('input', () => { state.dscr[k] = num(el.value); saveState(); renderDSCROutputs(); });
+  });
+  ['dscr_price','dscr_rent'].forEach(syncSlider);
+  document.querySelectorAll('[data-dscr]').forEach(el => {
+    el.addEventListener('input', () => {
+      const loan = state.dscr.loans[parseInt(el.dataset.dscr, 10)];
+      if (!loan) return;
+      loan[el.dataset.field] = el.dataset.field === 'name' ? el.value : num(el.value);
+      saveState();
+      renderDSCROutputs();
+    });
+  });
+  document.querySelectorAll('.dpa-unit').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const i = parseInt((btn.dataset.dpaId || '').split('_').pop(), 10);
+      const loan = state.dscr.loans[i];
+      if (!loan) return;
+      const amount = num(state.dscr.price) * num(loan.ltv) / 100;
+      const to = btn.dataset.to;
+      const cur = loan.feeType === 'pct' ? 'pct' : '$';
+      if (to === 'pct' && cur !== 'pct') loan.fees = amount > 0 ? +((num(loan.fees) / amount) * 100).toFixed(3) : 0;
+      if (to === '$' && cur === 'pct') loan.fees = Math.round(amount * num(loan.fees) / 100);
+      loan.feeType = to === 'pct' ? 'pct' : '$';
+      saveState();
+      renderDSCR();
+    });
+  });
+  registerTaxIns('dscr', { get: () => state.dscr, price: () => state.dscr.price, render: renderDSCR });
+  renderDSCROutputs();
+}
+function renderDSCROutputs() {
+  const pack = calcDSCR(state.dscr);
+  const stats = document.getElementById('dscrStats');
+  const table = document.getElementById('dscrCompare');
+  if (!stats || !table) return;
+  stats.innerHTML = pack.loans.map(row => `<div class="stat ${row.c.dscr >= 1 ? 'highlight' : ''}">
+    <div class="stat-label">${escapeHtml(row.src.name || 'Loan')} · DSCR</div>
+    <div class="stat-value">${row.c.dscr.toFixed(2)}</div>
+    <div class="stat-sub">${fmt$(row.c.cashFlow)} / mo cash flow · ${fmt$(row.c.pitia)} PITIA</div>
+  </div>`).join('');
+  const line = (label, fn) => `<tr><td>${label}</td>${pack.loans.map(r => `<td>${fn(r)}</td>`).join('')}</tr>`;
+  table.innerHTML = `<thead><tr><th></th>${pack.loans.map(r => `<th>${escapeHtml(r.src.name || 'Loan')}</th>`).join('')}</tr></thead><tbody>
+    ${line('Loan amount', r => fmt$(r.c.amount))}
+    ${line('Down payment', r => fmt$(r.c.down))}
+    ${line('Closing costs', r => fmt$(r.c.fee))}
+    ${line('Cash to close', r => fmt$(r.c.cashToClose))}
+    ${line('P&amp;I', r => fmt$(r.c.pi))}
+    ${line('PITIA', r => fmt$(r.c.pitia))}
+    ${line('DSCR', r => r.c.dscr.toFixed(2))}
+    <tr class="headline"><td>Monthly cash flow</td>${pack.loans.map(r => `<td>${(r.c.cashFlow >= 0 ? '+' : '') + fmt$(r.c.cashFlow)}</td>`).join('')}</tr>
+  </tbody>`;
+}
+function buildDSCRSections() {
+  const pack = calcDSCR(state.dscr);
+  return [{
+    title: 'DSCR Comparison',
+    type: 'table',
+    cols: pack.loans.map(r => r.src.name || 'Loan'),
+    rows: [
+      { label: 'Loan amount', vals: pack.loans.map(r => fmt$(r.c.amount)) },
+      { label: 'Cash to close', vals: pack.loans.map(r => fmt$(r.c.cashToClose)) },
+      { label: 'PITIA', vals: pack.loans.map(r => fmt$(r.c.pitia)) },
+      { label: 'DSCR', vals: pack.loans.map(r => r.c.dscr.toFixed(2)), total: true },
+      { label: 'Monthly cash flow', vals: pack.loans.map(r => (r.c.cashFlow >= 0 ? '+' : '') + fmt$(r.c.cashFlow)) },
+    ],
+  }, {
+    title: 'Summary', type: 'summary',
+    html: `<p>Rent of ${fmt$(num(state.dscr.rent))} a month is measured against each loan's PITIA. DSCR is rent divided by that payment. A figure above 1.00 means the rent covers it on this estimate.</p>`,
+  }];
+}
+function generateDSCRFlyer(opts) {
+  opts = opts || {};
+  const pack = calcDSCR(state.dscr);
+  const idx = Math.max(0, Math.min(pack.loans.length - 1, opts.idx || 0));
+  const cards = pack.loans.map((r, i) => ({
+    yr: r.src.name || ('Loan ' + String.fromCharCode(65 + i)),
+    rate: `${num(r.src.rate).toFixed(3)}% · ${num(r.src.ltv)}% LTV`,
+    amt: r.c.dscr.toFixed(2),
+    cls: i === idx ? 'y1' : 'soft',
+    badge: r.c.dscr >= 1 ? 'Covers' : '',
+    permo: 'DSCR',
+  }));
+  const body = `<div class="cols">${pack.loans.map(r => `<div class="col"><h2>${escapeHtml(r.src.name || 'Loan')}</h2>
+    <div class="row"><span class="lbl">Loan amount</span><span class="val">${fmt$(r.c.amount)}</span></div>
+    <div class="row"><span class="lbl">Cash to close</span><span class="val">${fmt$(r.c.cashToClose)}</span></div>
+    <div class="row"><span class="lbl">PITIA</span><span class="val">${fmt$(r.c.pitia)}</span></div>
+    <div class="row"><span class="lbl">Rent</span><span class="val">${fmt$(r.c.rent)}</span></div>
+    <div class="row tot"><span class="lbl">Monthly cash flow</span><span class="val">${(r.c.cashFlow >= 0 ? '+' : '') + fmt$(r.c.cashFlow)}</span></div>
+  </div>`).join('')}</div>`;
+  return openFlyer({
+    docTitle: 'Houzd DSCR Comparison',
+    tag: 'DSCR Loan',
+    title: 'Investor Loan Comparison',
+    subtitle: `<strong>${fmt$(num(state.dscr.price))}</strong> property · ${fmt$(num(state.dscr.rent))} rent`,
+    clientName: opts.clientName || '',
+    cardCount: cards.length,
+    heroHTML: flyerCards(cards),
+    bodyHTML: body,
+    returnHTML: !!opts.returnHTML,
+    disclaimer: 'DSCR shown here is monthly rent divided by principal, interest, taxes, insurance, and HOA. Lenders use their own ratio, reserves, and credit rules. This is an estimate, not an approval.',
+  });
+}
+
+const MODES = { standard: renderStandard, buydown: renderBuydown, fha: renderFHA, cashout: renderCashout, refi: renderRefi, arm: renderARM, rent: renderRent, heloc: renderHELOC, bridge: renderBridge, netproceeds: renderNetProceeds, construction: renderConstruction, dpa: renderDPA, dscr: renderDSCR };
 function renderMode() {
   destroyAllCharts();
   (MODES[state.mode] || renderStandard)();
@@ -6586,7 +6993,7 @@ This report was prepared using houzd Mortgage Review. Numbers are estimates — 
 
   // Also generate and download the report so they can attach it
   setTimeout(() => {
-    const html = buildReportHTML();
+    const html = buildReportHTML(state.mode);
     const blob = new Blob([html], { type: 'text/html' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -6734,7 +7141,7 @@ function helocOptionCardHTML(opt, i, canRemove) {
       ${fld('Max CLTV', `<input type="number" data-hopt="${i}" data-hfield="maxCLTV" value="${opt.maxCLTV}" step="1" min="50" max="100"><span class="post">%</span>`)}
       ${fld('Draw period', `<input type="number" data-hopt="${i}" data-hfield="drawPeriod" value="${opt.drawPeriod}" step="1" min="1" max="15"><span class="post">yr</span>`)}
       ${fld('Repayment', `<input type="number" data-hopt="${i}" data-hfield="repaymentTerm" value="${opt.repaymentTerm}" step="1" min="1" max="30"><span class="post">yr</span>`)}
-      ${fld('Closing costs', `<span class="pre">$</span><input type="number" data-hopt="${i}" data-hfield="closingCosts" value="${opt.closingCosts}" step="100">`)}
+      ${feeBuilderHTML('hopt' + i, 'Closing costs', opt.closingCosts || 0)}
       ${fld('Annual fee', `<span class="pre">$</span><input type="number" data-hopt="${i}" data-hfield="annualFee" value="${opt.annualFee}" step="25">`)}
       ${fld('Intro rate <span class="hint">0 = none</span>', `<input type="number" data-hopt="${i}" data-hfield="intro" value="${opt.intro}" step="0.125"><span class="post">%</span>`)}
       ${fld('Intro period', `<input type="number" data-hopt="${i}" data-hfield="introMonths" value="${opt.introMonths}" step="1" min="0" max="60" ${hasIntro?'':'disabled'}><span class="post">mo</span>`)}
@@ -6755,6 +7162,8 @@ function renderHelocOptionCards() {
     add.onclick = addHelocOption;
     wrap.appendChild(add);
   }
+  s.helocOptions.forEach((o, i) => initModeBuilders('hopt' + i));
+  decorateInputs(wrap);
   wrap.querySelectorAll('[data-hopt]').forEach(el => {
     el.addEventListener('input', e => {
       const i = parseInt(e.target.dataset.hopt);
@@ -6772,8 +7181,9 @@ function renderHelocOptionCards() {
 function addHelocOption() {
   const s = state.heloc;
   const last = s.helocOptions[s.helocOptions.length-1];
-  s.helocOptions.push({ ...(last || { rate:8.5, maxCLTV:85, drawPeriod:10, repaymentTerm:20, closingCosts:0, annualFee:0, intro:0, introMonths:0 }),
-    name: 'Lender ' + String.fromCharCode(65 + s.helocOptions.length) });
+  const copy = last ? JSON.parse(JSON.stringify(last)) : { rate:8.5, maxCLTV:85, drawPeriod:10, repaymentTerm:20, closingCosts:0, annualFee:0, intro:0, introMonths:0 };
+  copy.name = 'Lender ' + String.fromCharCode(65 + s.helocOptions.length);
+  s.helocOptions.push(copy);
   saveState(); renderHelocOptionCards(); renderHELOCOutputs();
 }
 
@@ -6783,6 +7193,8 @@ function removeHelocOption(i) {
 }
 
 function renderHELOC() {
+  (state.heloc.helocOptions || []).forEach((o, i) => syncFeeHost('hopt' + i));
+  syncFeeHost('hl');
   setSubtitle('HELOC — compare lender options side by side');
   setIntro(true, `Quote multiple HELOCs against each other. A HELOC is a <strong>second lien</strong> — the existing first mortgage stays exactly as-is, and the client only pays interest on what's drawn. The terms that separate lenders are <strong>rate, max CLTV, fees, and draw/repayment structure</strong>. The <strong>cash-out refi</strong> column is there as a baseline: it replaces the whole loan, which means <strong>the entire balance gets repriced</strong> at today's rate — not just the cash pulled.`);
 
@@ -6818,7 +7230,7 @@ function renderHELOC() {
           <div class="field-grid">
             ${sliderFld('Refi rate','hl_refiRate',s.refiRate,2,12,0.125,'','<span class="post">%</span>')}
             ${fld('Term','<input type="number" id="hl_refiTerm" value="'+s.refiTerm+'" step="1" min="10" max="40"><span class="post">yr</span>')}
-            ${fld('Closing costs','<span class="pre">$</span><input type="number" id="hl_refiClosing" value="'+s.refiClosingCosts+'" step="500">')}
+            ${feeBuilderHTML('hl', 'Closing costs', s.refiClosingCosts || 0)}
           </div>
           <div class="fee-computed" style="margin-top:8px;">Reprices the entire balance — not just the cash out</div>
         </div>
@@ -6856,6 +7268,7 @@ function renderHELOC() {
   ['hl_homeValue','hl_mortgageBal','hl_currentRate','hl_drawAmount','hl_refiRate'].forEach(id => syncSlider(id));
   renderHelocOptionCards();
   renderHELOCOutputs();
+  setTimeout(() => initModeBuilders('hl'), 0);
 }
 
 function renderHELOCOutputs() {
@@ -7127,8 +7540,8 @@ function calcBridge(s) {
 
   // New home payment
   const newPI = monthlyPI(newLoan, newRate, newTerm);
-  const newMonthlyTax = newPrice * num(s.newPropTax)/100/12;
-  const newMonthlyIns = num(s.newInsurance)/12;
+  const newMonthlyTax = annualTax(s, newPrice, 'newPropTax') / 12;
+  const newMonthlyIns = annualIns(s, newPrice, 'newInsurance') / 12;
   const newHoa = num(s.newHoa);
   const newPITI = newPI + newMonthlyTax + newMonthlyIns + newHoa;
 
@@ -7266,6 +7679,8 @@ function removeBridgeOption(i) {
 }
 
 function renderBridge() {
+  syncFeeHost('brn');
+  syncFeeHost('brh');
   setSubtitle('Bridge loan — buy before you sell');
   setIntro(true, `A <strong>bridge loan</strong> unlocks the equity in the departing home so the client can make a <strong>non-contingent offer</strong> on the new one. Choose whether it <strong>pays off the existing first mortgage</strong> (most common — leaves one loan on the departing home) or sits as a <strong>second lien</strong> behind it. Quote multiple lenders below on <strong>points, monthly-payment vs deferred, rate, term, and max LTV</strong>. The overlap carries two or three payments depending on structure.`);
 
@@ -7297,10 +7712,9 @@ function renderBridge() {
             ${sliderFld('Down payment','br_newDownPmt',s.newDownPmt,0,50,0.5,'','<span class="post">%</span>')}
             ${sliderFld('New rate','br_newRate',s.newRate,2,12,0.125,'','<span class="post">%</span>')}
             ${fld('Term','<input type="number" id="br_newTerm" value="'+s.newTerm+'" step="1"><span class="post">yr</span>')}
-            ${fld('Property tax','<input type="number" id="br_newPropTax" value="'+s.newPropTax+'" step="0.05"><span class="post">%</span>')}
-            ${fld('Insurance <span class="hint">/yr</span>','<span class="pre">$</span><input type="number" id="br_newInsurance" value="'+s.newInsurance+'" step="50">')}
+            ${taxInsPair({ prefix:'br', s, taxId:'br_newPropTax', insId:'br_newInsurance', taxField:'newPropTax', insField:'newInsurance' })}
             ${fld('HOA <span class="hint">/mo</span>','<span class="pre">$</span><input type="number" id="br_newHoa" value="'+s.newHoa+'" step="10">')}
-            ${fld('New closing costs','<span class="pre">$</span><input type="number" id="br_newClosing" value="'+(s.newClosingCosts||0)+'" step="500">')}
+            ${feeBuilderHTML('brn', 'New home closing costs', s.newClosingCosts || 0)}
           </div>
         </div>
       </div>
@@ -7338,7 +7752,7 @@ function renderBridge() {
         <div class="card">
           <div class="field-grid">
             ${sliderFld('HELOC rate','br_helocRate',s.helocRate,3,15,0.125,'','<span class="post">%</span>')}
-            ${fld('Closing costs','<span class="pre">$</span><input type="number" id="br_helocClosingCosts" value="'+s.helocClosingCosts+'" step="100">')}
+            ${feeBuilderHTML('brh', 'Closing costs', s.helocClosingCosts || 0)}
           </div>
           <div class="fee-computed" style="margin-top:8px;">Must be opened <strong>before</strong> listing — lenders won't approve a HELOC on a home that's on the market</div>
         </div>
@@ -7398,7 +7812,9 @@ function renderBridge() {
   const brStructEl = document.getElementById('br_structure');
   if (brStructEl) brStructEl.addEventListener('change', e => { state.bridge.bridgeStructure = e.target.value; saveState(); renderBridgeOptionCards(); renderBridgeOutputs(); });
   renderBridgeOptionCards();
+  registerTaxIns('br', { get: () => state.bridge, price: () => state.bridge.newHomePrice, taxField: 'newPropTax', insField: 'newInsurance', render: renderBridge });
   renderBridgeOutputs();
+  setTimeout(() => { initModeBuilders('brn'); initModeBuilders('brh'); }, 0);
 }
 
 function renderBridgeOutputs() {
@@ -7584,13 +8000,14 @@ function renderBridgeOutputs() {
 //======================================================
 // BRIDGE CLIENT FLYER GENERATOR
 //======================================================
-function generateBridgeFlyer() {
+function generateBridgeFlyer(opts) {
+  opts = opts || {};
   const s = state.bridge;
   const c = calcBridge(s);
   const best = c.best;
   if (!best) { alert('Add a bridge option first.'); return; }
 
-  const clientName = (s.flyerName || '').trim();
+  const clientName = (opts.clientName != null ? String(opts.clientName) : (s.flyerName || '')).trim();
   const today = new Date().toLocaleDateString('en-US', { year:'numeric', month:'short', day:'numeric' });
   const lo = currentLO();
   const loName = lo.name;
@@ -7769,6 +8186,7 @@ html,body { font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; color:#1C23
 </div>
 </body></html>`;
 
+  if ((opts && opts.returnHTML) || (window.__flyerOpts && window.__flyerOpts.returnHTML)) return flyer;
   const w = window.open('', '_blank');
   if (!w) { alert('Please allow pop-ups to generate the flyer.'); return; }
   w.document.open();
@@ -7779,6 +8197,109 @@ html,body { font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; color:#1C23
 //======================================================
 // FLYER: STANDARD (single scenario or best of compared)
 //======================================================
+function generateARMFlyer(opts) {
+  opts = opts || {};
+  const s = state.arm;
+  const c = calcARM(s);
+  const cards = [
+    { yr: 'ARM', rate: `${num(s.armInitialRate).toFixed(3)}% for ${c.fixedYears} years`, amt: fmt$(c.armPITI), cls: 'y1', permo: 'per month' },
+    { yr: 'Fixed', rate: `${num(s.fixedRate).toFixed(3)}% for ${num(s.term)} years`, amt: fmt$(c.fixedPITI), cls: 'soft', permo: 'per month' },
+    { yr: 'First reset', rate: `Could reach ${c.firstWorstRate.toFixed(3)}%`, amt: fmt$(c.armWorstPITI), cls: 'soft', permo: 'worst-case PITI' },
+  ];
+  const body = `<div class="cols">
+    <div class="col"><h2>During the fixed period</h2>
+      <div class="row"><span class="lbl">ARM payment</span><span class="val">${fmt$(c.armPITI)}</span></div>
+      <div class="row"><span class="lbl">Fixed payment</span><span class="val">${fmt$(c.fixedPITI)}</span></div>
+      <div class="row tot"><span class="lbl">Monthly difference</span><span class="val">${fmt$(Math.abs(c.monthlySavingsFixed))}</span></div>
+    </div>
+    <div class="col"><h2>After the first reset</h2>
+      <div class="row"><span class="lbl">Loan amount</span><span class="val">${fmt$(c.loan)}</span></div>
+      <div class="row"><span class="lbl">Worst-case payment</span><span class="val">${fmt$(c.armWorstPITI)}</span></div>
+      <div class="row"><span class="lbl">Lifetime-cap payment</span><span class="val">${fmt$(c.armLifetimePITI)}</span></div>
+    </div>
+  </div>`;
+  return openFlyer({
+    docTitle: 'Houzd ARM vs Fixed', tag: 'ARM vs Fixed', title: 'ARM vs Fixed',
+    subtitle: `<strong>${fmt$(c.homePrice)}</strong> purchase · ${c.fixedYears}/1 ARM vs ${num(s.term)}-year fixed`,
+    clientName: opts.clientName || '', cardCount: 3, heroHTML: flyerCards(cards), bodyHTML: body, returnHTML: !!opts.returnHTML,
+    disclaimer: 'ARM payments after the fixed period depend on the index, margin, and caps. The worst-case figure uses the first adjustment cap. This is an estimate, not a commitment to lend.',
+  });
+}
+function generateRentFlyer(opts) {
+  opts = opts || {};
+  const s = state.rent;
+  const c = calcRent(s);
+  const cards = [
+    { yr: 'Rent', rate: `Year ${c.horizon}`, amt: fmt$(c.renterWealth), cls: c.renterWealth >= c.ownerNet ? 'y1' : 'soft', permo: 'net worth' },
+    { yr: 'Own', rate: `Year ${c.horizon}`, amt: fmt$(c.ownerNet), cls: c.ownerNet > c.renterWealth ? 'y1' : 'soft', permo: 'net worth' },
+    { yr: 'First payment', rate: 'Owner PITI', amt: fmt$(c.ownInitialPITI), cls: 'soft', permo: 'per month' },
+  ];
+  const body = `<div class="cols">
+    <div class="col"><h2>Own</h2>
+      <div class="row"><span class="lbl">Home price</span><span class="val">${fmt$(c.homePrice)}</span></div>
+      <div class="row"><span class="lbl">Down payment</span><span class="val">${fmt$(c.downPayment)}</span></div>
+      <div class="row"><span class="lbl">Initial PITI</span><span class="val">${fmt$(c.ownInitialPITI)}</span></div>
+      <div class="row tot"><span class="lbl">Net worth at year ${c.horizon}</span><span class="val">${fmt$(c.ownerNet)}</span></div>
+    </div>
+    <div class="col"><h2>Rent</h2>
+      <div class="row"><span class="lbl">Starting rent</span><span class="val">${fmt$(num(s.monthlyRent))}</span></div>
+      <div class="row"><span class="lbl">Cash invested</span><span class="val">${fmt$(c.upfront)}</span></div>
+      <div class="row tot"><span class="lbl">Net worth at year ${c.horizon}</span><span class="val">${fmt$(c.renterWealth)}</span></div>
+    </div>
+  </div>`;
+  return openFlyer({
+    docTitle: 'Houzd Rent vs Own', tag: 'Rent vs Own', title: 'Rent vs Own',
+    subtitle: `Compared over <strong>${c.horizon} years</strong>`,
+    clientName: opts.clientName || '', cardCount: 3, heroHTML: flyerCards(cards), bodyHTML: body, returnHTML: !!opts.returnHTML,
+    disclaimer: 'Rent versus own is an illustration. It assumes the appreciation, rent growth, investment return, and maintenance rate entered in the calculator. It is not a prediction of wealth.',
+  });
+}
+function generateHELOCFlyer(opts) {
+  opts = opts || {};
+  const c = calcHELOC(state.heloc);
+  const idx = isFinite(opts.idx) ? opts.idx : (c.bestIdx || 0);
+  const picked = (c.options || [])[idx] || c.best;
+  if (!picked) { alert('Add a HELOC option first.'); return; }
+  const helocPay = picked.introMonths > 0 ? picked.introPayment : picked.drawPayment;
+  const cards = [
+    { yr: picked.name || 'HELOC', rate: `${picked.rate.toFixed(3)}%`, amt: fmt$(helocPay), cls: 'y1', permo: 'on the draw' },
+    { yr: 'Keep the first', rate: 'Mortgage + HELOC', amt: fmt$(picked.combinedMonthlyDraw), cls: 'soft', permo: 'per month' },
+    { yr: 'Cash-out refi', rate: `${c.refiRate.toFixed(3)}% on the whole loan`, amt: fmt$(c.refiPI), cls: 'soft', permo: 'per month' },
+  ];
+  const body = `<div class="cols">
+    <div class="col"><h2>${escapeHtml(picked.name || 'HELOC')}</h2>
+      <div class="row"><span class="lbl">Amount drawn</span><span class="val">${fmt$(c.drawWanted)}</span></div>
+      <div class="row"><span class="lbl">HELOC payment</span><span class="val">${fmt$(helocPay)}</span></div>
+      <div class="row"><span class="lbl">Fees</span><span class="val">${fmt$(picked.feesTotal)}</span></div>
+      <div class="row tot"><span class="lbl">Combined monthly</span><span class="val">${fmt$(picked.combinedMonthlyDraw)}</span></div>
+    </div>
+    <div class="col"><h2>Cash-out refinance</h2>
+      <div class="row"><span class="lbl">New loan</span><span class="val">${fmt$(c.refiLoan)}</span></div>
+      <div class="row"><span class="lbl">Closing costs</span><span class="val">${fmt$(c.refiClosing)}</span></div>
+      <div class="row tot"><span class="lbl">New payment</span><span class="val">${fmt$(c.refiPI)}</span></div>
+    </div>
+  </div>`;
+  return openFlyer({
+    docTitle: 'Houzd HELOC vs Cash-Out', tag: 'HELOC vs Cash-Out', title: 'HELOC vs Cash-Out Refinance',
+    subtitle: `<strong>${fmt$(c.homeValue)}</strong> home · ${fmt$(c.drawWanted)} cash needed`,
+    clientName: opts.clientName || '', cardCount: 3, heroHTML: flyerCards(cards), bodyHTML: body, returnHTML: !!opts.returnHTML,
+    disclaimer: 'A HELOC leaves the first mortgage in place and charges interest on the amount drawn. A cash-out refinance replaces the whole loan. Figures are estimates and are not a commitment to lend.',
+  });
+}
+function renderFlyer(opts) {
+  opts = opts || {};
+  const mode = opts.mode || state.mode || 'standard';
+  const fns = {
+    standard: generateStandardFlyer, buydown: generateBuydownFlyer, fha: generateFHAFlyer,
+    cashout: generateCashoutFlyer, refi: generateRefiFlyer, arm: generateARMFlyer,
+    rent: generateRentFlyer, heloc: generateHELOCFlyer, bridge: generateBridgeFlyer,
+    netproceeds: generateNetProceedsFlyer, construction: generateConstructionFlyer,
+    dpa: generateDPAFlyer, dscr: generateDSCRFlyer,
+  };
+  window.__flyerOpts = opts;
+  try { return (fns[mode] || generateStandardFlyer)(opts); }
+  finally { window.__flyerOpts = null; }
+}
 function generateStandardFlyer(opts) {
   opts = opts || {};
   const idx = opts.idx != null ? opts.idx : (state.standard?._flyerIdx != null ? state.standard._flyerIdx : 0);
@@ -7880,7 +8401,7 @@ function generateFHAFlyer() {
     </div>
   </div>`;
 
-  openFlyer({
+  return openFlyer({
     docTitle:'Houzd FHA vs Conventional',
     tag:'FHA vs Conventional',
     title:'FHA vs Conventional',
@@ -7930,7 +8451,7 @@ function generateCashoutFlyer() {
     </div>
   </div>`;
 
-  openFlyer({
+  return openFlyer({
     docTitle:'Houzd Cash-Out Refi',
     tag:'Cash-Out Refi',
     title:'Consolidate Debt with a Cash-Out Refi',
@@ -7980,7 +8501,7 @@ function generateRefiFlyer() {
     </div>
   </div>`;
 
-  openFlyer({
+  return openFlyer({
     docTitle:'Houzd Refinance Analysis',
     tag:'Rate / Term Refi',
     title:'Your Refinance Breakdown',
@@ -8027,7 +8548,7 @@ function generateNetProceedsFlyer() {
     </div>
   </div>`;
 
-  openFlyer({
+  return openFlyer({
     docTitle:'Houzd Net Proceeds',
     tag:'Seller Net Sheet',
     title:'Your Estimated Net Proceeds',
@@ -8125,8 +8646,8 @@ function calcConstruction(s) {
   const permRate = num(s.permRate);
   const permTerm = num(s.permTerm);
   const permPI = monthlyPI(permLoanAmount, permRate, permTerm);
-  const monthlyTax = asCompleted * num(s.propTax) / 100 / 12;
-  const monthlyIns = num(s.insurance) / 12;
+  const monthlyTax = annualTax(s, asCompleted) / 12;
+  const monthlyIns = annualIns(s, asCompleted) / 12;
   const hoa = num(s.hoa);
   const permLTV = asCompleted > 0 ? (permLoanAmount / asCompleted * 100) : 0;
   const permPlan = conventionalPMIPlan(permLTV, num(s.pmiRate));
@@ -8241,8 +8762,7 @@ function renderConstruction() {
           <div class="field-grid">
             ${sliderFld('Permanent rate','cn_permRate',s.permRate,2,12,0.125,'','<span class="post">%</span>')}
             ${fld('Term','<input type="number" id="cn_permTerm" value="'+s.permTerm+'" step="1"><span class="post">yr</span>')}
-            ${fld('Property tax <span class="hint">% of value</span>','<input type="number" id="cn_propTax" value="'+s.propTax+'" step="0.05"><span class="post">%</span>')}
-            ${fld('Insurance <span class="hint">/yr</span>','<span class="pre">$</span><input type="number" id="cn_insurance" value="'+s.insurance+'" step="50">')}
+            ${taxInsPair({ prefix:'cn', s, taxId:'cn_propTax', insId:'cn_insurance' })}
             ${fld('HOA <span class="hint">/mo</span>','<span class="pre">$</span><input type="number" id="cn_hoa" value="'+s.hoa+'" step="10">')}
             ${fld('PMI rate <span class="hint">/yr</span>','<input type="number" id="cn_pmiRate" value="'+s.pmiRate+'" step="0.05"><span class="post">%</span>')}
           </div>
@@ -8308,6 +8828,7 @@ function renderConstruction() {
   const landOwnedEl = document.getElementById('cn_landOwned');
   if (landOwnedEl) landOwnedEl.addEventListener('change', e => { state.construction.landOwned = e.target.checked; saveState(); renderConstructionOutputs(); });
   wireFlyerName('cn', state.construction);
+  registerTaxIns('cn', { get: () => state.construction, price: () => state.construction.asCompletedValue, render: renderConstruction });
   renderConstructionOutputs();
 }
 
@@ -8479,7 +9000,7 @@ function generateConstructionFlyer() {
     </div>
   </div>`;
 
-  openFlyer({
+  return openFlyer({
     docTitle:'Houzd Construction Loan',
     tag:`${c.is1x?'1x Close &middot; ':''}${c.isReno?'Renovation':'Construction'} Loan`,
     title:`Your ${c.isReno?'Renovation':'Construction'} Loan Plan`,
@@ -8876,13 +9397,64 @@ Write a 2-3 sentence plain-language summary that a non-expert homebuyer would im
 //======================================================
 // Generic helpers for non-standard modes (single state object, not array)
 
+function seedFees(owner, key) {
+  if (!owner) return null;
+  if (owner[key] && owner[key].length) return owner[key];
+  owner[key] = JSON.parse(JSON.stringify(defaultFeeTemplate()));
+  return owner[key];
+}
+function feeHost(owner, feesKey, totalKey) {
+  seedFees(owner, feesKey);
+  return {
+    get fees() { return owner[feesKey]; },
+    set fees(v) { owner[feesKey] = v; },
+    get closingCosts() { return owner[totalKey]; },
+    set closingCosts(v) { owner[totalKey] = v; },
+    get prepaids() { return owner[feesKey + 'Pre'] || []; },
+    set prepaids(v) { owner[feesKey + 'Pre'] = v; },
+    get prepaidsTotal() { return owner[totalKey + 'Pre'] || 0; },
+    set prepaidsTotal(v) { owner[totalKey + 'Pre'] = v; },
+  };
+}
 function getModeState(prefix) {
+  if (prefix === 'hl') return feeHost(state.heloc, 'refiFees', 'refiClosingCosts');
+  if (prefix === 'brn') return feeHost(state.bridge, 'newFees', 'newClosingCosts');
+  if (prefix === 'brh') return feeHost(state.bridge, 'helocFees', 'helocClosingCosts');
+  if (prefix.indexOf('hopt') === 0) {
+    const opt = state.heloc && state.heloc.helocOptions && state.heloc.helocOptions[parseInt(prefix.slice(4), 10)];
+    if (opt) seedFees(opt, 'fees');
+    return opt;
+  }
   const map = { bd: state.buydown, co: state.cashout, rf: state.refi };
   return map[prefix];
 }
 function getModeOutputFn(prefix) {
+  if (prefix === 'hl' || prefix.indexOf('hopt') === 0) return renderHELOCOutputs;
+  if (prefix === 'brn' || prefix === 'brh') return renderBridgeOutputs;
   const map = { bd: renderBuydownOutputs, co: renderCashoutOutputs, rf: renderRefiOutputs };
   return map[prefix];
+}
+function syncFeeHost(prefix) {
+  const host = getModeState(prefix);
+  if (!host || !host.fees) return;
+  host.closingCosts = feesToTotal(host.fees, modeLoanContext(prefix, host));
+}
+function feeBuilderHTML(prefix, title, total) {
+  const s = getModeState(prefix);
+  const fees = s && s.fees ? s.fees : defaultFeeTemplate();
+  return `<div class="field full">
+    <div class="fee-builder" id="${prefix}-fee-builder">
+      <div class="fee-builder-header" onclick="toggleModeFeeBulder('${prefix}')">
+        <div class="fee-builder-title">
+          <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/></svg>
+          ${title}
+        </div>
+        <div class="fee-builder-total" id="${prefix}-fee-total">${fmt$(total || 0)}</div>
+        <svg class="fee-builder-chevron" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+      <div class="fee-builder-body" id="${prefix}-fee-body">${renderModeFeeLines(prefix, fees)}</div>
+    </div>
+  </div>`;
 }
 
 function modeLoanContext(prefix, s) {
@@ -8893,6 +9465,20 @@ function modeLoanContext(prefix, s) {
     return { loan: num(s.currentBalance) + cash, price: num(s.homeValue) };
   }
   if (prefix === 'rf') return { loan: num(s.currentBalance), price: num(s.homeValue) };
+  if (prefix === 'hl' || prefix.indexOf('hopt') === 0) {
+    const h = state.heloc || {};
+    return { loan: num(h.drawAmount), price: num(h.homeValue) };
+  }
+  if (prefix === 'brn') {
+    const b = state.bridge || {};
+    const price = num(b.newHomePrice);
+    return { loan: Math.max(price - price * num(b.newDownPmt) / 100, 0), price };
+  }
+  if (prefix === 'brh') {
+    const b = state.bridge || {};
+    const price = num(b.currentHomeValue);
+    return { loan: Math.max(price - num(b.currentMortgageBalance), 0), price };
+  }
   const price = num(s.homePrice);
   const dp = s.dpType === 'pct' ? price * num(s.downPmt) / 100 : num(s.downPmt);
   return { loan: Math.max(price - dp, 0), price };
@@ -9086,7 +9672,8 @@ function initModeBuilders(prefix) {
   const s = getModeState(prefix);
   if (!s) return;
   if (!s.fees) { s.fees = defaultFeeTemplate(); syncModeFeeTotal(prefix); }
-  if (!s.prepaids) { s.prepaids = defaultPrepaidTemplate(); syncModePrepaidTotal(prefix); }
+  const withPrepaids = prefix === 'bd' || prefix === 'co' || prefix === 'rf';
+  if (withPrepaids && !s.prepaids) { s.prepaids = defaultPrepaidTemplate(); syncModePrepaidTotal(prefix); }
   setTimeout(() => wireModeBuilders(prefix), 0);
 }
 
@@ -9095,48 +9682,119 @@ function initModeBuilders(prefix) {
 //======================================================
 
 /* ---------- Modal ---------- */
+const REPORT_PROGRAMS = [
+  ['standard', 'Standard — Compare loan options'],
+  ['buydown', 'Temp Buydown'],
+  ['heloc', 'HELOC vs Cash-Out Refi'],
+  ['bridge', 'Bridge Loan — Buy Before You Sell'],
+  ['netproceeds', 'Net Proceeds — Seller Estimate'],
+  ['construction', 'Construction / Renovation Loan'],
+  ['fha', 'FHA vs Conventional'],
+  ['cashout', 'Cash-out Refi vs Pay Off Debt'],
+  ['refi', 'Rate/Term Refi vs Current Loan'],
+  ['arm', 'ARM vs Fixed'],
+  ['rent', 'Rent vs Own'],
+  ['dpa', 'DPA Programs'],
+  ['dscr', 'DSCR Loans'],
+];
+let reportPreviewHTML = '';
+let reportPreviewURL = '';
+function reportProgram() {
+  const el = document.getElementById('rpt_program');
+  return (el && el.value) || state.mode || 'standard';
+}
+function fillReportScenarios() {
+  const mode = reportProgram();
+  const sel = document.getElementById('rpt_flyerScenario');
+  if (!sel) return;
+  let options = [{ value: '0', label: 'This comparison' }];
+  if (mode === 'standard') options = (state.standard || []).map((s, i) => ({ value: String(i), label: s.name || ('Scenario ' + String.fromCharCode(65 + i)) }));
+  else if (mode === 'heloc') options = ((state.heloc && state.heloc.helocOptions) || []).map((o, i) => ({ value: String(i), label: o.name || ('Lender ' + String.fromCharCode(65 + i)) }));
+  else if (mode === 'bridge') options = ((state.bridge && state.bridge.bridgeOptions) || []).map((o, i) => ({ value: String(i), label: o.name || ('Lender ' + String.fromCharCode(65 + i)) }));
+  else if (mode === 'dpa') options = ((state.dpa && state.dpa.programs) || []).map((o, i) => ({ value: String(i), label: o.name || ('Program ' + String.fromCharCode(65 + i)) }));
+  else if (mode === 'dscr') options = ((state.dscr && state.dscr.loans) || []).map((o, i) => ({ value: String(i), label: o.name || ('Loan ' + String.fromCharCode(65 + i)) }));
+  if (!options.length) options = [{ value: '0', label: 'This comparison' }];
+  sel.innerHTML = options.map(o => `<option value="${o.value}">${escapeHtml(o.label)}</option>`).join('');
+}
+function mountReportPreview(html) {
+  reportPreviewHTML = html || '';
+  const pane = document.getElementById('rptPreview');
+  if (!pane) return;
+  if (reportPreviewURL) { URL.revokeObjectURL(reportPreviewURL); reportPreviewURL = ''; }
+  if (!html) {
+    pane.innerHTML = '<div style="height:100%;display:flex;align-items:center;justify-content:center;color:#7D7D7D;font-size:14px;padding:24px;text-align:center;">Choose Show to preview the report or flyer here.</div>';
+    return;
+  }
+  reportPreviewURL = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
+  pane.innerHTML = `<iframe src="${reportPreviewURL}" style="width:100%;height:100%;border:none;background:#fff;"></iframe><button type="button" onclick="openPreviewTab()" title="Open in a new tab" style="position:absolute;top:10px;right:10px;z-index:5;width:36px;height:36px;border:1px solid #E6EAEF;border-radius:10px;background:#fff;box-shadow:0 2px 10px rgba(0,0,0,.18);cursor:pointer;color:#1C2331;font-size:16px;line-height:1;">↗</button>`;
+}
+function openPreviewTab() {
+  if (!reportPreviewHTML) return;
+  const w = window.open('', '_blank');
+  if (!w) { alert('Please allow pop-ups to open this in a new tab.'); return; }
+  w.document.open();
+  w.document.write(reportPreviewHTML);
+  w.document.close();
+}
 function openReportModal() {
   let modal = document.getElementById('reportModal');
   if (!modal) {
     modal = document.createElement('div');
     modal.id = 'reportModal';
     modal.innerHTML = `
+      <style>
+        @media (max-width: 800px) {
+          #reportModal .rpt-panel { flex-direction: column !important; width: calc(100vw - 16px) !important; height: calc(100vh - 16px) !important; }
+          #reportModal .rpt-form { width: 100% !important; max-height: 48vh; border-right: none !important; border-bottom: 1px solid #E6EAEF; }
+          #reportModal .rpt-preview { min-height: 240px; }
+        }
+      </style>
       <div id="reportModalBackdrop" style="position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:900;backdrop-filter:blur(3px);"></div>
-      <div style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:901;
-        background:#fff;border-radius:18px;width:420px;padding:32px;
-        box-shadow:0 24px 80px rgba(0,0,0,.25);font-family:var(--font-body);">
-        <div style="font-family:var(--font-head);font-weight:700;font-size:18px;color:var(--text);margin-bottom:6px;">Generate Client Report</div>
-        <div style="font-size:13px;color:var(--text-muted);margin-bottom:24px;">Builds a clean, shareable report from the current analysis.</div>
-        <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:24px;">
-          <div>
-            <label style="font-family:var(--font-head);font-size:11px;font-weight:600;color:var(--cement);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:5px;">Client Name</label>
-            <input id="rpt_clientName" type="text" placeholder="e.g. Johnny Appleseed"
-              style="width:100%;border:1px solid var(--border-strong);border-radius:10px;padding:10px 12px;font:inherit;font-size:14px;outline:none;color:var(--text);">
+      <div class="rpt-panel" style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:901;background:#fff;border-radius:18px;width:min(1120px,calc(100vw - 24px));height:min(780px,calc(100vh - 24px));box-shadow:0 24px 80px rgba(0,0,0,.25);font-family:var(--font-body);display:flex;overflow:hidden;">
+        <div class="rpt-form" style="width:min(380px,100%);overflow:auto;padding:28px;border-right:1px solid #E6EAEF;flex:0 0 auto;">
+          <div style="font-family:var(--font-head);font-weight:700;font-size:18px;color:var(--text);margin-bottom:6px;">Client report</div>
+          <div style="font-size:13px;color:var(--text-muted);margin-bottom:18px;">Starts on the page you have open. Change the program if you want a different handout.</div>
+          <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:18px;">
+            <div>
+              <label style="font-family:var(--font-head);font-size:11px;font-weight:600;color:var(--cement);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:5px;">Client Name</label>
+              <input id="rpt_clientName" type="text" placeholder="e.g. Johnny Appleseed" style="width:100%;border:1px solid var(--border-strong);border-radius:10px;padding:10px 12px;font:inherit;font-size:14px;outline:none;color:var(--text);">
+            </div>
+            <div>
+              <label style="font-family:var(--font-head);font-size:11px;font-weight:600;color:var(--cement);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:5px;">Program</label>
+              <select id="rpt_program" style="width:100%;border:1px solid var(--border-strong);border-radius:10px;padding:10px 12px;font:inherit;font-size:14px;outline:none;color:var(--text);background:#fff;">
+                ${REPORT_PROGRAMS.map(([v, label]) => `<option value="${v}">${label}</option>`).join('')}
+              </select>
+            </div>
+            <div>
+              <label style="font-family:var(--font-head);font-size:11px;font-weight:600;color:var(--cement);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:5px;">Flyer scenario</label>
+              <select id="rpt_flyerScenario" style="width:100%;border:1px solid var(--border-strong);border-radius:10px;padding:10px 12px;font:inherit;font-size:14px;outline:none;color:var(--text);background:#fff;"></select>
+            </div>
           </div>
-          <div>
-            <label style="font-family:var(--font-head);font-size:11px;font-weight:600;color:var(--cement);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:5px;">Flyer scenario</label>
-            <select id="rpt_flyerScenario" style="width:100%;border:1px solid var(--border-strong);border-radius:10px;padding:10px 12px;font:inherit;font-size:14px;outline:none;color:var(--text);background:#fff;"></select>
+          <div style="display:flex;border-radius:10px;overflow:hidden;margin-bottom:8px;">
+            <button onclick="generateAndDownloadReport()" style="flex:1;padding:12px;border:none;background:var(--houzd-blue);color:#fff;font:inherit;font-family:var(--font-head);font-weight:700;font-size:13px;cursor:pointer;">Download report</button>
+            <button onclick="showReportPreview()" style="width:84px;padding:12px;border:none;border-left:1px solid rgba(255,255,255,.35);background:var(--houzd-blue);color:#fff;font:inherit;font-family:var(--font-head);font-weight:700;font-size:13px;cursor:pointer;">Show</button>
           </div>
+          <div style="display:flex;border-radius:10px;overflow:hidden;margin-bottom:14px;">
+            <button onclick="downloadFlyerFromModal()" style="flex:1;padding:12px;border:none;background:var(--charcoal);color:#fff;font:inherit;font-family:var(--font-head);font-weight:700;font-size:13px;cursor:pointer;">Download flyer</button>
+            <button onclick="showFlyerPreview()" style="width:84px;padding:12px;border:none;border-left:1px solid rgba(255,255,255,.25);background:var(--charcoal);color:#fff;font:inherit;font-family:var(--font-head);font-weight:700;font-size:13px;cursor:pointer;">Show</button>
+          </div>
+          <button onclick="closeReportModal()" style="width:100%;padding:11px;border:1px solid var(--border-strong);border-radius:10px;background:#fff;font:inherit;font-family:var(--font-head);font-weight:600;font-size:13px;cursor:pointer;color:var(--cement);">Cancel</button>
         </div>
-        <button onclick="generateAndDownloadReport()" style="width:100%;padding:12px;border:none;border-radius:10px;background:var(--houzd-blue);color:#fff;font:inherit;font-family:var(--font-head);font-weight:700;font-size:13px;cursor:pointer;margin-bottom:8px;">Download report</button>
-        <button onclick="generateAndOpenReport()" style="width:100%;padding:11px;border:1px solid var(--border-strong);border-radius:10px;background:#fff;font:inherit;font-family:var(--font-head);font-weight:600;font-size:13px;cursor:pointer;color:var(--text);margin-bottom:8px;">Open report in a new tab</button>
-        <button onclick="downloadFlyerFromModal()" style="width:100%;padding:12px;border:none;border-radius:10px;background:var(--charcoal);color:#fff;font:inherit;font-family:var(--font-head);font-weight:700;font-size:13px;cursor:pointer;margin-bottom:8px;">Download flyer</button>
-        <button onclick="openFlyerFromModal()" style="width:100%;padding:11px;border:1px solid var(--border-strong);border-radius:10px;background:#fff;font:inherit;font-family:var(--font-head);font-weight:600;font-size:13px;cursor:pointer;color:var(--text);margin-bottom:14px;">Open flyer in a new tab</button>
-        <button onclick="closeReportModal()" style="width:100%;padding:11px;border:1px solid var(--border-strong);border-radius:10px;background:#fff;font:inherit;font-family:var(--font-head);font-weight:600;font-size:13px;cursor:pointer;color:var(--cement);">Cancel</button>
+        <div id="rptPreview" class="rpt-preview" style="flex:1;min-width:0;background:#F4F7FA;position:relative;"></div>
       </div>`;
     document.body.appendChild(modal);
-
     document.getElementById('rpt_clientName').addEventListener('input', () => {
       state.reportLO = Object.assign({}, state.reportLO || {}, { clientName: document.getElementById('rpt_clientName').value });
       saveState();
     });
+    document.getElementById('rpt_program').addEventListener('change', () => { fillReportScenarios(); mountReportPreview(''); });
+    document.getElementById('rpt_flyerScenario').addEventListener('change', () => mountReportPreview(''));
   }
   document.getElementById('rpt_clientName').value = (state.reportLO && state.reportLO.clientName) || '';
-  const flyerSel = document.getElementById('rpt_flyerScenario');
-  if (flyerSel) {
-    flyerSel.innerHTML = (state.standard || []).map((s, i) => `<option value="${i}">${escapeHtml(s.name || ('Scenario ' + String.fromCharCode(65 + i)))}</option>`).join('');
-    if (state.standard && state.standard._flyerIdx != null) flyerSel.value = String(state.standard._flyerIdx);
-  }
+  const program = document.getElementById('rpt_program');
+  if (program) program.value = state.mode || 'standard';
+  fillReportScenarios();
+  mountReportPreview('');
   modal.style.display = 'block';
 }
 function closeReportModal() {
@@ -9154,56 +9812,52 @@ function getReportMeta() {
     nmls: lo.nmls,
     photo: lo.photo,
     date: new Date().toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' }),
-    mode: state.mode,
+    mode: reportProgram(),
   };
 }
 function flyerOptsFromModal() {
   const sel = document.getElementById('rpt_flyerScenario');
   const idx = sel ? parseInt(sel.value || '0', 10) : 0;
   const clientName = (document.getElementById('rpt_clientName')?.value || '').trim();
-  state.standard._flyerIdx = idx;
-  state.standard._flyerName = clientName;
+  const mode = reportProgram();
+  if (mode === 'standard' && state.standard) {
+    state.standard._flyerIdx = idx;
+    state.standard._flyerName = clientName;
+  }
   if (state.reportLO) state.reportLO.clientName = clientName;
   else state.reportLO = { clientName };
   saveState();
-  return { idx, clientName };
+  return { mode, idx, clientName, returnHTML: true };
 }
-function downloadFlyerFromModal() {
-  const picked = flyerOptsFromModal();
-  const html = generateStandardFlyer({ idx: picked.idx, clientName: picked.clientName, returnHTML: true });
+function downloadHTMLFile(html, filename) {
   if (!html) return;
   const blob = new Blob([html], { type: 'text/html' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `houzd-flyer-${(picked.clientName || 'client').toLowerCase().replace(/\s+/g, '-')}.html`;
+  a.download = filename;
   a.click();
   URL.revokeObjectURL(url);
+}
+function downloadFlyerFromModal() {
+  const picked = flyerOptsFromModal();
+  const html = renderFlyer(picked);
+  downloadHTMLFile(html, `houzd-flyer-${(picked.clientName || 'client').toLowerCase().replace(/\s+/g, '-')}.html`);
   closeReportModal();
 }
-function openFlyerFromModal() {
+function showFlyerPreview() {
   const picked = flyerOptsFromModal();
-  generateStandardFlyer({ idx: picked.idx, clientName: picked.clientName });
+  mountReportPreview(renderFlyer(picked) || '');
+}
+function showReportPreview() {
+  mountReportPreview(buildReportHTML());
 }
 
 function generateAndDownloadReport() {
   const html = buildReportHTML();
-  const blob = new Blob([html], { type: 'text/html' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
   const meta = getReportMeta();
-  a.href = url;
-  a.download = `houzd-report-${(meta.clientName || 'client').toLowerCase().replace(/\s+/g,'-')}.html`;
-  a.click();
-  URL.revokeObjectURL(url);
+  downloadHTMLFile(html, `houzd-report-${(meta.clientName || 'client').toLowerCase().replace(/\s+/g,'-')}.html`);
   closeReportModal();
-}
-function generateAndOpenReport() {
-  const html = buildReportHTML();
-  const win = window.open('', '_blank');
-  if (!win) { alert('Please allow pop-ups to open the report.'); return; }
-  win.document.write(html);
-  win.document.close();
 }
 
 function generateAndShareNetlify() {
@@ -9223,9 +9877,9 @@ function generateAndShareNetlify() {
 }
 
 /* ---------- Report HTML builder ---------- */
-function buildReportHTML() {
+function buildReportHTML(modeOverride) {
   const meta = getReportMeta();
-  const mode = state.mode;
+  const mode = modeOverride || reportProgram();
 
   // Gather data per mode
   let sections = [];
@@ -9239,6 +9893,12 @@ function buildReportHTML() {
     sections = buildCashoutSections();
   } else if (mode === 'refi') {
     sections = buildRefiSections();
+  } else if (mode === 'dpa') {
+    sections = buildDPASections();
+  } else if (mode === 'dscr') {
+    sections = buildDSCRSections();
+  } else {
+    sections = buildPageSections(mode);
   }
 
   const modeLabel = {
@@ -9251,6 +9911,10 @@ function buildReportHTML() {
     fha: 'FHA vs Conventional',
     cashout: 'Cash-Out Refinance Analysis',
     refi: 'Refinance Analysis',
+    arm: 'ARM vs Fixed',
+    rent: 'Rent vs Own',
+    dpa: 'Down Payment Assistance',
+    dscr: 'DSCR Loan Comparison',
   }[mode] || 'Mortgage Review';
 
   const COLORS = ['#00A0E8','#424242','#7D7D7D','#059669'];
@@ -9541,7 +10205,7 @@ function reportHeader(meta, modeLabel) {
 function reportFooter(meta) {
   return `<div class="rpt-foot">
     <div>
-      <div class="foot-brand">Carter Campbell · Houzd Mortgage · NMLS ${escapeHtml(meta.nmls)} · Company NMLS 888979</div>
+      <div class="foot-brand">${escapeHtml(meta.loName)} · Houzd Mortgage · NMLS ${escapeHtml(meta.nmls)} · Company NMLS 888979</div>
       <div class="foot-note">${escapeHtml(meta.email)} · ${escapeHtml(formatPhone(meta.phone))} · Equal Housing Lender</div>
     </div>
     <img src="${HOUZD_LOGO}" alt="Houzd Mortgage" style="height:28px;width:auto;">
@@ -9850,6 +10514,71 @@ function buildStandardSections() {
 }
 
 // ── FHA ──
+function buildPageSections(mode) {
+  const row = (label, val) => ({ label, vals: [val] });
+  if (mode === 'heloc') {
+    const c = calcHELOC(state.heloc);
+    const best = c.best;
+    if (!best) return [];
+    return [{ title: 'HELOC vs Cash-Out', type: 'table', cols: ['Figure'], rows: [
+      row('Best HELOC', best.name || 'HELOC'),
+      row('HELOC payment', fmt$(best.introMonths > 0 ? best.introPayment : best.drawPayment)),
+      row('Combined monthly', fmt$(best.combinedMonthlyDraw)),
+      row('HELOC fees', fmt$(best.feesTotal)),
+      row('Cash-out loan', fmt$(c.refiLoan)),
+      row('Cash-out payment', fmt$(c.refiPI)),
+      row('Cash-out closing costs', fmt$(c.refiClosing)),
+    ] }];
+  }
+  if (mode === 'bridge') {
+    const c = calcBridge(state.bridge);
+    if (!c.best) return [];
+    return [{ title: 'Bridge Loan', type: 'table', cols: ['Figure'], rows: [
+      row('New home payment', fmt$(c.newPITI)),
+      row('Cash needed', fmt$(c.cashNeeded)),
+      row('Best bridge', c.best.name || 'Bridge'),
+      row('Overlap monthly', fmt$(c.best.overlapMonthly)),
+      row('HELOC alternative', fmt$(c.helocOverlapMonthly)),
+    ] }];
+  }
+  if (mode === 'arm') {
+    const c = calcARM(state.arm);
+    return [{ title: 'ARM vs Fixed', type: 'table', cols: ['Figure'], rows: [
+      row('ARM payment', fmt$(c.armPITI)),
+      row('Fixed payment', fmt$(c.fixedPITI)),
+      row('Worst-case ARM payment', fmt$(c.armWorstPITI)),
+      row('Loan amount', fmt$(c.loan)),
+    ] }];
+  }
+  if (mode === 'rent') {
+    const c = calcRent(state.rent);
+    return [{ title: 'Rent vs Own', type: 'table', cols: ['Figure'], rows: [
+      row('Owner net worth', fmt$(c.ownerNet)),
+      row('Renter net worth', fmt$(c.renterWealth)),
+      row('Initial owner payment', fmt$(c.ownInitialPITI)),
+      row('Horizon', c.horizon + ' years'),
+    ] }];
+  }
+  if (mode === 'construction') {
+    const c = calcConstruction(state.construction);
+    return [{ title: 'Construction', type: 'table', cols: ['Figure'], rows: [
+      row('Project cost', fmt$(c.totalProjectCost)),
+      row('Cash to close', fmt$(c.cashToClose)),
+      row('Permanent payment', fmt$(c.permPITI)),
+      row('Permanent loan', fmt$(c.permLoanAmount)),
+    ] }];
+  }
+  if (mode === 'netproceeds') {
+    const c = calcNetProceeds(state.netproceeds);
+    return [{ title: 'Net Proceeds', type: 'table', cols: ['Figure'], rows: [
+      row('Sale price', fmt$(c.price)),
+      row('Selling costs', fmt$(c.totalCosts)),
+      row('Payoffs', fmt$(c.payoffs)),
+      row('Estimated net', fmt$(c.netProceeds)),
+    ] }];
+  }
+  return [];
+}
 function buildFHASections() {
   const c = calcFHAvsConv(state.fha);
   const f = c.fha, v = c.conv;
