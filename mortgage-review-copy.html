@@ -3949,12 +3949,7 @@ html,body { font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; color:#1C23
 .lo .ct { font-size:10px; color:#424242; margin-top:3px; }
 .foot-right { text-align:right; font-size:8.5px; color:#7D7D7D; line-height:1.5; max-width:3in; }
 .disc { font-size:7.5px; color:#7D7D7D; line-height:1.45; margin-top:12px; text-align:justify; }
-.printbar { position:fixed; top:0; left:0; right:0; background:#00A0E8; color:#fff; padding:12px 16px; display:flex; align-items:center; justify-content:space-between; font-size:14px; font-weight:600; z-index:99; box-shadow:0 2px 8px rgba(0,0,0,0.15); }
-.printbar button { background:#fff; color:#0085C2; border:none; padding:9px 18px; border-radius:8px; font-weight:700; font-size:14px; cursor:pointer; font-family:inherit; }
-@media print { .printbar, .printbar-spacer { display:none !important; } .page { padding-top:0.55in; } }
 </style></head><body>
-<div class="printbar"><span>Your flyer is ready</span><button onclick="window.print()">Save as PDF / Print</button></div>
-<div style="height:52px;" class="printbar-spacer"></div>
 <div class="page">
   <div class="head" style="display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid #00A0E8;padding-bottom:12px;">
     <div style="display:flex;align-items:center;gap:12px;">
@@ -4166,15 +4161,7 @@ html,body { font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; color:#1C23
 .lo .ct { font-size:10px; color:#424242; margin-top:3px; }
 .foot-right { text-align:right; font-size:8.5px; color:#7D7D7D; line-height:1.5; max-width:3in; }
 .disc { font-size:7.5px; color:#7D7D7D; line-height:1.45; margin-top:12px; text-align:justify; }
-.printbar { position:fixed; top:0; left:0; right:0; background:#00A0E8; color:#fff; padding:12px 16px; display:flex; align-items:center; justify-content:space-between; font-size:14px; font-weight:600; z-index:99; box-shadow:0 2px 8px rgba(0,0,0,0.15); }
-.printbar button { background:#fff; color:#0085C2; border:none; padding:9px 18px; border-radius:8px; font-weight:700; font-size:14px; cursor:pointer; font-family:inherit; }
-@media print { .printbar { display:none !important; } .page { padding-top:0.55in; } }
 </style></head><body>
-<div class="printbar">
-  <span>Your flyer is ready</span>
-  <button onclick="window.print()">Save as PDF / Print</button>
-</div>
-<div style="height:52px;" class="printbar-spacer"></div>
 <div class="page">
   <div class="head" style="display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid #00A0E8;padding-bottom:12px;">
     <div style="display:flex;align-items:center;gap:12px;">
@@ -8175,12 +8162,7 @@ html,body { font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; color:#1C23
 .lo .ct { font-size:10px; color:#424242; margin-top:3px; }
 .foot-right { text-align:right; font-size:8.5px; color:#7D7D7D; line-height:1.5; max-width:3in; }
 .disc { font-size:7.5px; color:#7D7D7D; line-height:1.45; margin-top:12px; text-align:justify; }
-.printbar { position:fixed; top:0; left:0; right:0; background:#00A0E8; color:#fff; padding:12px 16px; display:flex; align-items:center; justify-content:space-between; font-size:14px; font-weight:600; z-index:99; box-shadow:0 2px 8px rgba(0,0,0,0.15); }
-.printbar button { background:#fff; color:#0085C2; border:none; padding:9px 18px; border-radius:8px; font-weight:700; font-size:14px; cursor:pointer; font-family:inherit; }
-@media print { .printbar, .printbar-spacer { display:none !important; } .page { padding-top:0.55in; } }
 </style></head><body>
-<div class="printbar"><span>Your flyer is ready</span><button onclick="window.print()">Save as PDF / Print</button></div>
-<div style="height:52px;" class="printbar-spacer"></div>
 <div class="page">
   <div class="head" style="display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid #00A0E8;padding-bottom:12px;">
     <div style="display:flex;align-items:center;gap:12px;">
@@ -9924,10 +9906,17 @@ function openReportModal() {
       state.reportLO = Object.assign({}, state.reportLO || {}, { clientName: document.getElementById('rpt_clientName').value });
       saveState();
       clearTimeout(openReportModal._nameTimer);
-      openReportModal._nameTimer = setTimeout(() => { if (reportPreviewKind === 'report') showReportPreview(); }, 300);
+      openReportModal._nameTimer = setTimeout(() => {
+        if (reportPreviewKind === 'flyer') showFlyerPreview();
+        else if (reportPreviewKind === 'report') showReportPreview();
+      }, 300);
     });
-    document.getElementById('rpt_program').addEventListener('change', () => { fillReportScenarios(); showReportPreview(); });
-    document.getElementById('rpt_flyerScenario').addEventListener('change', () => { if (reportPreviewKind === 'flyer') showFlyerPreview(); });
+    document.getElementById('rpt_program').addEventListener('change', () => {
+      fillReportScenarios();
+      if (reportPreviewKind === 'flyer') showFlyerPreview();
+      else showReportPreview();
+    });
+    document.getElementById('rpt_flyerScenario').addEventListener('change', () => showFlyerPreview());
     window.addEventListener('resize', () => { if (document.getElementById('reportModal')?.style.display === 'block') fitReportPreview(); });
   }
   document.getElementById('rpt_clientName').value = (state.reportLO && state.reportLO.clientName) || '';
