@@ -10075,13 +10075,6 @@ ${reportCSS()}
   </div>
   ${reportFooter(meta)}
 </div>
-<div class="print-actions">
-  <button onclick="window.print()" class="print-btn">
-    <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
-    Save as PDF
-  </button>
-  <span class="print-tip">Or use your browser's Print → Save as PDF</span>
-</div>
 <script>
 ${chartScript}
 <\/script>
@@ -10178,17 +10171,10 @@ body{font-family:var(--b);background:var(--bg);color:var(--ink);font-size:13px;-
 .foot-note{font-size:10px;color:var(--sub);margin-top:3px;}
 .foot-nmls{font-size:9px;color:rgba(255,255,255,.35);}
 
-/* screen action bar */
-.print-actions{width:780px;margin:0 auto;padding:18px 0 40px;display:flex;align-items:center;gap:14px;}
-.print-btn{background:var(--blue);color:#fff;border:none;padding:11px 26px;border-radius:10px;font-family:var(--h);font-weight:700;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:8px;transition:background .15s;}
-.print-btn:hover{background:var(--blue-d);}
-.print-tip{font-size:12px;color:var(--sub);}
-
 @media print{
   @page{size:letter;margin:0.35in;}
   html,body{background:#fff;font-size:11px;}
   .page{width:auto;box-shadow:none;}
-  .print-actions{display:none!important;}
   .rpt-head{padding:0 0 8px;}
   .ws-lo img{width:42px;height:42px;}
   .ws-doctitle{font-size:13px;}
