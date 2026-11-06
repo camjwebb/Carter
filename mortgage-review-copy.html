@@ -796,6 +796,7 @@
 
   /* ---------- LOOM VIDEO ---------- */
   .loom-section {
+    display: none;
     margin-bottom: 0;
   }
   .flyer-bar {
@@ -3337,8 +3338,13 @@ function renderStandardSummary(calcs) {
 
 function scrollAmortTop() {
   const el = document.getElementById('amortAnchor');
-  if (!el) return;
+  if (!el) { window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
   const header = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--app-header-h')) || 76;
+  const atTableTop = el.getBoundingClientRect().top <= header + 20;
+  if (atTableTop) {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    return;
+  }
   const top = el.getBoundingClientRect().top + window.scrollY - header - 8;
   window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
 }
@@ -3420,24 +3426,22 @@ function renderStandardAmort(calcs) {
       </div>`;
     wrap.insertBefore(banner, t);
 
-    // Yearly summary for bi-weekly
-    const byYear = {};
+    const monthCount = Math.max(1, years * 12);
     rows.forEach(r => {
-      if (!byYear[r.year]) byYear[r.year] = { year: r.year, interest: 0, principal: 0, balance: r.balance };
-      byYear[r.year].interest += r.interest;
-      byYear[r.year].principal += r.principal;
-      byYear[r.year].balance = r.balance;
+      r.month = Math.min(monthCount, Math.max(1, Math.ceil(r.period * 12 / 26)));
     });
+    const perMonth = {};
+    rows.forEach(r => { perMonth[r.month] = (perMonth[r.month] || 0) + 1; });
 
-    let html = `<thead><tr><th>Year</th><th>Payment</th><th>Interest</th><th>Principal</th><th>PMI</th><th>Tax+Ins+HOA</th><th>Total</th><th>Balance</th><th>Equity</th></tr></thead><tbody>`;
-    Object.values(byYear).forEach(r => {
-      const mRows = (c.rows || []).filter(x => x.year === r.year);
-      const pmi = mRows.reduce((sum, x) => sum + (x.pmi || 0), 0);
-      const escrow = mRows.reduce((sum, x) => sum + (x.escrow || 0), 0);
-      const endM = mRows[mRows.length - 1];
-      const equity = endM ? (endM.equity + endM.balance - r.balance) : 0;
+    let html = `<thead><tr><th>Pmt</th><th>Payment</th><th>Interest</th><th>Principal</th><th>PMI</th><th>Tax+Ins+HOA</th><th>Total</th><th>Balance</th><th>Equity</th></tr></thead><tbody>`;
+    rows.forEach(r => {
+      const m = (c.rows || [])[r.month - 1];
+      const share = perMonth[r.month] || 1;
+      const pmi = m ? (m.pmi || 0) / share : 0;
+      const escrow = m ? (m.escrow || 0) / share : 0;
       const pmt = r.principal + r.interest;
-      html += `<tr class="year-row"><td>Year ${r.year}</td><td>${fmt$(pmt)}</td><td>${fmt$(r.interest)}</td><td>${fmt$(r.principal)}</td><td>${fmt$(pmi)}</td><td>${fmt$(escrow)}</td><td>${fmt$(pmt + pmi + escrow)}</td><td>${fmt$(r.balance)}</td><td>${fmt$(equity)}</td></tr>`;
+      const equity = m ? (m.equity + m.balance - r.balance) : 0;
+      html += `<tr class="year-row"><td>${r.period} <span style="color:var(--text-faint)">(yr ${r.year})</span></td><td>${fmt$(pmt)}</td><td>${fmt$(r.interest)}</td><td>${fmt$(r.principal)}</td><td>${fmt$(pmi)}</td><td>${fmt$(escrow)}</td><td>${fmt$(pmt + pmi + escrow)}</td><td>${fmt$(r.balance)}</td><td>${fmt$(equity)}</td></tr>`;
     });
     html += '</tbody>';
     t.innerHTML = html;
