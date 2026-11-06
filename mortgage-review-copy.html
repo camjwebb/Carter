@@ -3341,14 +3341,16 @@ function renderStandardSummary(calcs) {
 function scrollAmortTop() {
   const el = document.getElementById('amortAnchor');
   if (!el) { window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
-  const header = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--app-header-h')) || 76;
-  const atTableTop = el.getBoundingClientRect().top <= header + 20;
-  if (atTableTop) {
+  const header = document.body.classList.contains('kiosk')
+    ? 56
+    : (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--app-header-h')) || 76);
+  const rectTop = el.getBoundingClientRect().top;
+  const linedUp = Math.abs(rectTop - (header + 8)) < 40;
+  if (linedUp) {
     window.scrollTo({ top: 0, behavior: 'smooth' });
     return;
   }
-  const top = el.getBoundingClientRect().top + window.scrollY - header - 8;
-  window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+  window.scrollTo({ top: Math.max(0, rectTop + window.scrollY - header - 8), behavior: 'smooth' });
 }
 function renderStandardAmort(calcs) {
   const pick = document.getElementById('amortPick');
