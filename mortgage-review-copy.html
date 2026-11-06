@@ -2069,7 +2069,7 @@ function solidChartTip(context) {
   el.style.top = Math.max(8, Math.min(top, window.innerHeight - height - 8)) + 'px';
 }
 
-function drawMiniDonut(canvasId, parts) {
+function drawMiniDonut(canvasId, parts, animate) {
   destroyChart(canvasId);
   const el = document.getElementById(canvasId);
   if (!el) return;
@@ -2081,7 +2081,7 @@ function drawMiniDonut(canvasId, parts) {
     },
     options: {
       responsive: true, maintainAspectRatio: false, cutout: '74%',
-      animation: false,
+      animation: animate === false ? false : { animateRotate: true, animateScale: false, duration: 900 },
       plugins: {
         legend: { display: false },
         tooltip: { enabled: false, external: solidChartTip }
@@ -3122,20 +3122,22 @@ function renderStandardOutputs() {
   renderStandardCompare(calcs);
   refreshCashPanels(calcs);
   renderStandardAmort(calcs);
-  const drawDonuts = () => {
+  const drawDonuts = (animate) => {
     calcs.forEach((c, i) => {
       const slot = document.querySelector(`[data-donut-slot="${i}"]`);
       if (!slot) return;
       const parts = pitiParts(c);
       const cId = 'scenDonut_std_' + i;
       slot.innerHTML = miniDonutHTML(cId, parts, 'Monthly Total', fmt$(c.initialPITI));
-      drawMiniDonut(cId, parts);
+      drawMiniDonut(cId, parts, animate);
     });
   };
   const donutShowing = document.querySelector('[data-donut-slot="0"] canvas');
+  const opening = !renderStandardOutputs._seen;
+  renderStandardOutputs._seen = true;
   clearTimeout(renderStandardOutputs._donutTimer);
-  if (!donutShowing) drawDonuts();
-  else renderStandardOutputs._donutTimer = setTimeout(drawDonuts, 1000);
+  if (!donutShowing) drawDonuts(!opening);
+  else renderStandardOutputs._donutTimer = setTimeout(() => drawDonuts(true), 1000);
 }
 
 function renderHeadlineStats(calcs) {
