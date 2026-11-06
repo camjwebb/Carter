@@ -5086,6 +5086,7 @@ function renderRefiOutputs() {
 function defaultARM() {
   return { homePrice: 500000, downPmt: 20, dpType: 'pct', term: 30,
     propTax: 0.6, insurance: 1200, hoa: 0,
+    pmiRate: 0.55, pmiType: 'pct',
     armType: '7/1', armInitialRate: 5.875, armMargin: 2.75, armIndex: 4.5,
     armInitialCap: 2, armPeriodicCap: 1, armLifetimeCap: 5,
     fixedRate: 6.75,
@@ -5099,12 +5100,18 @@ function calcARM(s) {
   const monthlyTax = annualTax(s, homePrice) / 12;
   const monthlyIns = annualIns(s, homePrice) / 12;
   const hoa = num(s.hoa);
+  const baseLTV = homePrice > 0 ? loan / homePrice * 100 : 0;
+  const pmiPlan = s.pmiType === '$' ? null : conventionalPMIPlan(baseLTV, num(s.pmiRate));
+  const pmiMonthly = s.pmiType === '$'
+    ? (baseLTV > 80 ? num(s.pmiRate) : 0)
+    : (pmiPlan.applies ? (loan * pmiPlan.rate / 100) / 12 : 0);
+  const pmiCutoff = s.pmiType === '$' ? (baseLTV > 80 ? 78 : 80) : pmiPlan.cutoff;
   const fixedYears = parseInt(String(s.armType).split('/')[0], 10) || 7;
 
   const armPI = monthlyPI(loan, num(s.armInitialRate), years);
-  const armPITI = armPI + monthlyTax + monthlyIns + hoa;
+  const armPITI = armPI + monthlyTax + monthlyIns + hoa + pmiMonthly;
   const fixedPI = monthlyPI(loan, num(s.fixedRate), years);
-  const fixedPITI = fixedPI + monthlyTax + monthlyIns + hoa;
+  const fixedPITI = fixedPI + monthlyTax + monthlyIns + hoa + pmiMonthly;
 
   const adjustMonths = String(s.armType).includes('/6') ? 6 : 12;
   const fullyIndexed = num(s.armMargin) + num(s.armIndex);
@@ -5132,17 +5139,19 @@ function calcARM(s) {
   }
   const remBal = bal;
   const remYears = years - fixedYears;
+  const ltvAfter = homePrice > 0 ? remBal / homePrice * 100 : 0;
+  const pmiAfter = pmiMonthly > 0 && ltvAfter > pmiCutoff ? pmiMonthly : 0;
   const armResetPI = remYears > 0 && remBal > 0 ? monthlyPI(remBal, resetRate, remYears) : armPI;
   const armWorstPI = remYears > 0 && remBal > 0 ? monthlyPI(remBal, firstWorstRate, remYears) : armPI;
   const armLifetimePI = remYears > 0 && remBal > 0 ? monthlyPI(remBal, worstCaseRate, remYears) : armPI;
-  const armResetPITI = armResetPI + monthlyTax + monthlyIns + hoa;
-  const armWorstPITI = armWorstPI + monthlyTax + monthlyIns + hoa;
-  const armLifetimePITI = armLifetimePI + monthlyTax + monthlyIns + hoa;
+  const armResetPITI = armResetPI + monthlyTax + monthlyIns + hoa + pmiAfter;
+  const armWorstPITI = armWorstPI + monthlyTax + monthlyIns + hoa + pmiAfter;
+  const armLifetimePITI = armLifetimePI + monthlyTax + monthlyIns + hoa + pmiAfter;
   const monthlySavingsFixed = fixedPITI - armPITI;
   const totalSavingsFixed = monthlySavingsFixed * fixedYears * 12;
 
   return { homePrice, loan, downPayment: dp, fixedYears, adjustMonths, monthsToLifetimeCap,
-    monthlyTax, monthlyIns, hoa,
+    monthlyTax, monthlyIns, hoa, pmiMonthly, pmiAfter,
     armPI, armPITI, fixedPI, fixedPITI,
     resetRate, firstWorstRate, worstCaseRate, armResetPI, armResetPITI, armWorstPI, armWorstPITI, armLifetimePITI,
     monthlySavingsFixed, totalSavingsFixed, remBal };
@@ -5152,6 +5161,8 @@ function renderARM() {
   setIntro(true, `An <strong>ARM</strong> (adjustable-rate mortgage) typically offers a lower rate during an initial fixed period (5, 7, or 10 years), then adjusts annually based on an index + margin. <strong>Caps</strong> limit how much the rate can move at first reset, each year after, and over the loan's lifetime. Use this when the borrower expects to move, refinance, or pay off before the reset.`);
 
   const s = state.arm;
+  if (s.pmiRate == null) s.pmiRate = 0.55;
+  if (!s.pmiType) s.pmiType = 'pct';
   document.getElementById('modeContent').innerHTML = `
     <section>
       <div class="section-row"><div class="section-title">Inputs</div></div>
@@ -5171,6 +5182,15 @@ function renderARM() {
             ${fld('Term', `<input type="number" id="arm_term" value="${s.term}" step="1"><span class="post">yr</span>`)}
             ${taxInsPair({ prefix:'arm', s, taxId:'arm_propTax', insId:'arm_insurance' })}
             ${fld('HOA <span class="hint">/mo</span>', `<span class="pre">$</span><input type="number" id="arm_hoa" value="${s.hoa}" step="10">`)}
+            <div class="field">
+              <label>PMI <span class="hint">${(s.pmiType === '$') ? 'per month' : 'of the loan'}</span>
+                <span class="toggle-pair">
+                  <button type="button" id="arm_pmi_pct" class="${s.pmiType === '$' ? '' : 'active'}">%</button>
+                  <button type="button" id="arm_pmi_dollar" class="${s.pmiType === '$' ? 'active' : ''}">$</button>
+                </span>
+              </label>
+              <div class="input-wrap">${s.pmiType === '$' ? '<span class="pre">$</span>' : ''}<input type="number" id="arm_pmiRate" value="${s.pmiRate == null ? 0.55 : s.pmiRate}" step="${s.pmiType === '$' ? '5' : '0.01'}">${s.pmiType === '$' ? '<span class="post">/mo</span>' : '<span class="post">%</span>'}</div>
+            </div>
           </div>
         </div>
       </div>
@@ -5214,7 +5234,7 @@ function renderARM() {
     <section><div class="section-row"><div class="section-title">Borrower summary</div></div><div id="armSummary" class="summary"></div></section>
   `;
 
-  ['homePrice','downPmt','term','propTax','insurance','hoa','armInitialRate','armMargin','armIndex','armInitialCap','armPeriodicCap','armLifetimeCap','fixedRate'].forEach(k => {
+  ['homePrice','downPmt','term','propTax','insurance','hoa','pmiRate','armInitialRate','armMargin','armIndex','armInitialCap','armPeriodicCap','armLifetimeCap','fixedRate'].forEach(k => {
     const el = document.getElementById('arm_' + k);
     if (el) el.addEventListener('input', () => { state.arm[k] = num(el.value); saveState(); renderARMOutputs(); });
   });
@@ -5229,6 +5249,31 @@ function renderARM() {
     const a = state.arm;
     if (num(a.downPmt) > 0 && num(a.downPmt) < 100) a.downPmt = Math.round(num(a.homePrice) * num(a.downPmt) / 100);
     a.dpType = '$'; saveState(); renderARM();
+  });
+  const armLoan = () => {
+    const a = state.arm;
+    const price = num(a.homePrice);
+    const down = a.dpType === 'pct' ? price * num(a.downPmt) / 100 : num(a.downPmt);
+    return Math.max(price - down, 0);
+  };
+  document.getElementById('arm_pmi_pct').addEventListener('click', () => {
+    const a = state.arm;
+    if (a.pmiType === '$') {
+      const loan = armLoan();
+      a.pmiRate = loan > 0 ? +((num(a.pmiRate) * 12 / loan) * 100).toFixed(3) : 0;
+    }
+    a.pmiType = 'pct';
+    saveState();
+    renderARM();
+  });
+  document.getElementById('arm_pmi_dollar').addEventListener('click', () => {
+    const a = state.arm;
+    if (a.pmiType !== '$') {
+      a.pmiRate = Math.round(armLoan() * num(a.pmiRate) / 100 / 12);
+    }
+    a.pmiType = '$';
+    saveState();
+    renderARM();
   });
   registerTaxIns('arm', { get: () => state.arm, price: () => state.arm.homePrice, render: renderARM });
   renderARMOutputs();
@@ -5246,6 +5291,7 @@ function renderARMOutputs() {
   const t = document.getElementById('armCompare');
   let html = `<thead><tr><th></th><th><span class="swatch" style="background:#00A0E8"></span>ARM</th><th><span class="swatch" style="background:#424242"></span>Fixed</th></tr></thead><tbody>`;
   html += `<tr class="headline"><td>Initial monthly PITI</td><td>${fmt$(c.armPITI)}</td><td>${fmt$(c.fixedPITI)}</td></tr>`;
+  html += `<tr><td>PMI</td><td>${fmt$(c.pmiMonthly)}</td><td>${fmt$(c.pmiMonthly)}</td></tr>`;
   html += `<tr class="section"><td colspan="3">Rate path</td></tr>`;
   html += `<tr><td>Starting rate</td><td>${num(s.armInitialRate).toFixed(3)}%</td><td>${num(s.fixedRate).toFixed(3)}%</td></tr>`;
   html += `<tr><td>Fixed period</td><td>${c.fixedYears} years</td><td>${num(s.term)} years</td></tr>`;
@@ -10635,36 +10681,57 @@ function buildPageSections(mode) {
   const row = (label, val) => ({ label, vals: [val] });
   if (mode === 'heloc') {
     const c = calcHELOC(state.heloc);
-    const best = c.best;
-    if (!best) return [];
-    return [{ title: 'HELOC vs Cash-Out', type: 'table', cols: ['Figure'], rows: [
-      row('Best HELOC', best.name || 'HELOC'),
-      row('HELOC payment', fmt$(best.introMonths > 0 ? best.introPayment : best.drawPayment)),
-      row('Combined monthly', fmt$(best.combinedMonthlyDraw)),
-      row('HELOC fees', fmt$(best.feesTotal)),
-      row('Cash-out loan', fmt$(c.refiLoan)),
-      row('Cash-out payment', fmt$(c.refiPI)),
-      row('Cash-out closing costs', fmt$(c.refiClosing)),
+    const opts = c.options || [];
+    if (!opts.length) return [];
+    const across = (fn, refi) => opts.map(fn).concat([refi]);
+    return [{ title: 'HELOC vs Cash-Out', type: 'table', cols: opts.map(o => o.name || 'HELOC').concat(['Cash-Out Refi']), rows: [
+      { section: 'Monthly' },
+      { label: 'Total during draw', vals: across(o => fmt$(o.combinedMonthlyDraw), fmt$(c.refiPI)), total: true },
+      { label: 'First mortgage P&I', vals: across(() => fmt$(c.currentPI), '—') },
+      { label: 'HELOC / new loan', vals: across(o => fmt$(o.introMonths > 0 ? o.introPayment : o.drawPayment), fmt$(c.refiPI)) },
+      { label: 'After draw period', vals: across(o => fmt$(o.combinedMonthlyRepay), fmt$(c.refiPI)) },
+      { section: 'The loan' },
+      { label: 'Rate', vals: across(o => (o.introMonths > 0 ? o.introRate.toFixed(3) + '% intro, then ' : '') + o.rate.toFixed(3) + '%', c.refiRate.toFixed(3) + '%') },
+      { label: 'First mortgage', vals: across(() => c.curRate.toFixed(3) + '% kept', c.refiRate.toFixed(3) + '% repriced') },
+      { label: 'Balance repriced', vals: across(() => fmt$(0), fmt$(c.mortgageBal)) },
+      { label: 'Blended rate', vals: across(o => o.blendedRate.toFixed(3) + '%', c.refiRate.toFixed(3) + '%') },
+      { label: 'Closing costs', vals: across(o => fmt$(o.closingCosts), fmt$(c.refiClosing)) },
+      { label: 'Credit limit', vals: across(o => fmt$(o.creditLimit), '—') },
+      { label: 'Amount drawn', vals: across(o => fmt$(o.draw), fmt$(c.drawWanted)) },
+      { label: 'Combined LTV', vals: across(o => o.combinedLTV.toFixed(1) + '%', c.refiCLTV.toFixed(1) + '%') },
+      { label: 'Total cost, with the first mortgage', vals: across(o => fmt$(o.pathTotalCost), fmt$(c.refiTotalCost)), total: true },
     ] }];
   }
   if (mode === 'bridge') {
     const c = calcBridge(state.bridge);
-    if (!c.best) return [];
-    return [{ title: 'Bridge Loan', type: 'table', cols: ['Figure'], rows: [
-      row('New home payment', fmt$(c.newPITI)),
-      row('Cash needed', fmt$(c.cashNeeded)),
-      row('Best bridge', c.best.name || 'Bridge'),
-      row('Overlap monthly', fmt$(c.best.overlapMonthly)),
-      row('HELOC alternative', fmt$(c.helocOverlapMonthly)),
+    const opts = c.options || [];
+    if (!opts.length || !c.best) return [];
+    const best = c.best;
+    const across = (fn, heloc, sell) => opts.map(fn).concat([heloc, sell]);
+    return [{ title: 'Bridge Comparison', type: 'table', cols: opts.map(o => o.name || 'Bridge').concat(['HELOC', 'Sell First']), rows: [
+      { label: 'Total financing cost', vals: across(o => fmt$(o.totalCost), fmt$(c.helocTotalCost), '$0'), total: true },
+      { label: 'Rate', vals: across(o => num(o.rate).toFixed(3) + '%', num(state.bridge.helocRate).toFixed(3) + '%', '—') },
+      { label: 'Monthly payment', vals: across(o => o.deferred ? 'None' : fmt$(o.monthlyPayment), fmt$(c.helocMonthlyInterest), '—') },
+      { label: 'Amount used', vals: across(o => fmt$(o.amount), fmt$(best.amount), '—') },
+      { label: 'Total monthly during overlap', vals: across(o => fmt$(o.overlapMonthly), fmt$(c.helocOverlapMonthly), fmt$(c.newPITI)), total: true },
+      { label: 'New home payment', vals: across(() => fmt$(c.newPITI), fmt$(c.newPITI), fmt$(c.newPITI)) },
+      { label: 'Balloon due', vals: across(o => fmt$(o.balloonDue), fmt$(best.amount), '—') },
+      { label: 'Net proceeds at sale', vals: across(o => fmt$(o.netSaleProceeds), fmt$(c.sellFirstNetProceeds - best.amount), fmt$(c.sellFirstNetProceeds)) },
     ] }];
   }
   if (mode === 'arm') {
     const c = calcARM(state.arm);
-    return [{ title: 'ARM vs Fixed', type: 'table', cols: ['Figure'], rows: [
-      row('ARM payment', fmt$(c.armPITI)),
-      row('Fixed payment', fmt$(c.fixedPITI)),
-      row('Worst-case ARM payment', fmt$(c.armWorstPITI)),
-      row('Loan amount', fmt$(c.loan)),
+    const s = state.arm;
+    return [{ title: 'ARM vs Fixed', type: 'table', cols: ['ARM', 'Fixed'], rows: [
+      { label: 'Initial monthly PITI', vals: [fmt$(c.armPITI), fmt$(c.fixedPITI)], total: true },
+      { label: 'P&I', vals: [fmt$(c.armPI), fmt$(c.fixedPI)] },
+      { label: 'PMI', vals: [fmt$(c.pmiMonthly), fmt$(c.pmiMonthly)] },
+      { label: 'Starting rate', vals: [num(s.armInitialRate).toFixed(3) + '%', num(s.fixedRate).toFixed(3) + '%'] },
+      { label: 'Fixed period', vals: [c.fixedYears + ' years', num(s.term) + ' years'] },
+      { label: 'Likely reset rate', vals: [c.resetRate.toFixed(3) + '%', '—'] },
+      { label: 'PITI after likely reset', vals: [fmt$(c.armResetPITI), fmt$(c.fixedPITI)] },
+      { label: 'Worst-case PITI', vals: [fmt$(c.armWorstPITI), fmt$(c.fixedPITI)] },
+      { label: 'Loan amount', vals: [fmt$(c.loan), fmt$(c.loan)] },
     ] }];
   }
   if (mode === 'rent') {
