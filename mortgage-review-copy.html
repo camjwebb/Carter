@@ -232,6 +232,12 @@
     font-family: var(--font-body);
     font-size: 12px; color: var(--text-faint);
   }
+  .compare-horizon {
+    display: flex; align-items: center; justify-content: flex-start; gap: 10px;
+    padding: 12px 16px;
+    border-top: 1px solid var(--border);
+    font-family: var(--font-head); font-size: 12px; font-weight: 600; color: var(--text);
+  }
 
   /* ---------- INTRO BANNER ---------- */
   .mode-intro {
@@ -890,12 +896,16 @@
     @page { margin: 0.4in; }
     header.app { position: static; box-shadow: none; backdrop-filter: none; background: white; padding: 6px 0; border-bottom: 2px solid var(--houzd-blue); }
     .header-actions, .add-scenario, .icon-btn, .amort-controls, .amort-back-top, .loan-type-row,
-    .loom-section, #flyerSlot, .fee-builder-body, .fee-del, .toggle-pair, .btn,
+    .loom-section, #flyerSlot, .fee-del, .fee-type-toggle, .fee-builder-actions, .fee-builder-chevron, .toggle-pair, .btn,
     .mobile-bottom-bar, .kiosk-bar, .present-chip { display: none !important; }
+    .fee-builder-body { display: block !important; }
     body { background: white; font-size: 9pt; }
     main { padding: 8px 0 0; max-width: none; }
-    .scenario, .stat, .chart-card, .panel, .summary, .card { box-shadow: none !important; break-inside: avoid; page-break-inside: avoid; }
-    .amort-table-wrap { box-shadow: none !important; break-inside: auto; page-break-inside: auto; overflow: visible; border: none; }
+    .stat, .chart-card, .panel, .summary, .card { box-shadow: none !important; break-inside: avoid; page-break-inside: avoid; }
+    .scenario { box-shadow: none !important; break-inside: auto; page-break-inside: auto; }
+    .amort-layout { display: block; width: 100%; }
+    .amort-table-wrap { box-shadow: none !important; break-inside: auto; page-break-inside: auto; overflow: visible; border: none; width: 100%; max-width: none; }
+    table.amort { width: 100% !important; min-width: 0 !important; table-layout: fixed; }
     section { margin-bottom: 8px; page-break-inside: auto; break-inside: auto; }
     .scenarios { grid-template-columns: repeat(3, 1fr) !important; gap: 8px; }
     .scenario { padding: 8px; }
@@ -1634,29 +1644,15 @@
     <div class="profiles-drawer-title">Client Profiles</div>
     <button class="profiles-drawer-close" onclick="closeProfilesDrawer()">×</button>
   </div>
-  <div style="padding:0 18px 12px;">
-    <button class="btn-apply-basics" onclick="shareDealLink()" style="background:var(--houzd-blue);">
-      <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
-      Share this deal as a link
-    </button>
-    <div style="font-size:11px;color:var(--text-faint);margin-top:6px;line-height:1.4;">
-      Opens the full deal — every tab — on any device. Text it to yourself to pick up on your phone.
-    </div>
-    <button class="btn-apply-basics" onclick="applyBasicsToAllTabs()" style="margin-top:12px;">
-      <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>
-      Use this deal's price &amp; taxes on every tab
-    </button>
-    <div style="font-size:11px;color:var(--text-faint);margin-top:6px;line-height:1.4;">
-      Set up the property once in any tab, then tap to copy price, taxes, insurance &amp; HOA into all the others.
-    </div>
-  </div>
-  <div class="profiles-list" id="profilesList"></div>
-  <div class="profiles-footer">
-    <button class="btn-new-profile" onclick="saveCurrentAsProfile()">
+  <div style="padding:12px 12px 0;">
+    <button class="btn-apply-basics" onclick="saveCurrentAsProfile()">
       <svg width="14" height="14"><use href="#i-save"/></svg>
       Save current as profile
     </button>
-    <div style="display:flex;gap:8px;margin-top:8px;">
+  </div>
+  <div class="profiles-list" id="profilesList"></div>
+  <div class="profiles-footer">
+    <div style="display:flex;gap:8px;">
       <button class="btn-new-profile" style="flex:1;padding:9px;font-size:12px;" onclick="backupEverything()" title="Download all deals as one file">
         <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
         Backup all
@@ -2084,6 +2080,7 @@ function drawMiniDonut(canvasId, parts) {
     },
     options: {
       responsive: true, maintainAspectRatio: false, cutout: '74%',
+      animation: false,
       plugins: {
         legend: { display: false },
         tooltip: { enabled: false, external: solidChartTip }
@@ -2736,12 +2733,14 @@ function renderStandard() {
     <section>
       <div class="section-row">
         <div class="section-title">Comparison</div>
-        <div class="section-row-meta" style="display:flex;align-items:center;gap:8px;">
+      </div>
+      <div class="panel">
+        <table class="compare" id="compareTable"></table>
+        <div class="compare-horizon">
           Equity &amp; net position year
-          <div class="input-wrap" style="width:88px;"><input type="number" id="horizonYear" value="${state.standardHorizonYear || 10}" step="1" min="1"><span class="post">yr</span></div>
+          <div class="input-wrap" style="width:110px;"><input type="number" id="horizonYear" value="${state.standardHorizonYear || 10}" step="1" min="1"><span class="post">yr</span></div>
         </div>
       </div>
-      <div class="panel"><table class="compare" id="compareTable"></table></div>
     </section>
     <section>
       <div class="section-row"><div class="section-title">Headline numbers</div></div>
@@ -3122,9 +3121,7 @@ function renderStandardOutputs() {
   renderStandardCompare(calcs);
   refreshCashPanels(calcs);
   renderStandardAmort(calcs);
-  const donutReady = document.querySelector('[data-donut-slot="0"] canvas');
-  clearTimeout(renderStandardOutputs._donutTimer);
-  renderStandardOutputs._donutTimer = setTimeout(() => {
+  const drawDonuts = () => {
     calcs.forEach((c, i) => {
       const slot = document.querySelector(`[data-donut-slot="${i}"]`);
       if (!slot) return;
@@ -3133,7 +3130,11 @@ function renderStandardOutputs() {
       slot.innerHTML = miniDonutHTML(cId, parts, 'Monthly Total', fmt$(c.initialPITI));
       drawMiniDonut(cId, parts);
     });
-  }, donutReady ? 1000 : 0);
+  };
+  const donutShowing = document.querySelector('[data-donut-slot="0"] canvas');
+  clearTimeout(renderStandardOutputs._donutTimer);
+  if (!donutShowing) drawDonuts();
+  else renderStandardOutputs._donutTimer = setTimeout(drawDonuts, 1000);
 }
 
 function renderHeadlineStats(calcs) {
@@ -6401,11 +6402,7 @@ function renderProfilesList() {
   if (!list) return;
   const profiles = loadProfiles();
   if (profiles.length === 0) {
-    list.innerHTML = `<div style="text-align:center;padding:32px 16px;color:var(--text-faint);">
-      <div style="font-size:32px;margin-bottom:10px;">📋</div>
-      <div style="font-family:var(--font-head);font-weight:600;font-size:13px;margin-bottom:4px;">No profiles yet</div>
-      <div style="font-size:12px;">Build a scenario, then hit "Save current as profile" to store it here.</div>
-    </div>`;
+    list.innerHTML = `<div style="text-align:center;padding:32px 16px;color:var(--text);font-family:var(--font-head);font-weight:600;font-size:13px;">No profiles yet</div>`;
     return;
   }
   list.innerHTML = profiles.map(p => `
@@ -6416,9 +6413,6 @@ function renderProfilesList() {
         ${p.summary ? `<div class="profile-summary">${escapeHtml(p.summary)}</div>` : ''}
         <div class="profile-meta">${escapeHtml(p.modeLabel)} · ${escapeHtml(p.savedAt)}</div>
       </div>
-      <button class="profile-del" onclick="event.stopPropagation();shareProfileLink('${p.id}')" title="Share link" style="color:var(--houzd-blue);">
-        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
-      </button>
       <button class="profile-del" onclick="event.stopPropagation();deleteProfile('${p.id}')" title="Delete">
         <svg><use href="#i-x"/></svg>
       </button>
