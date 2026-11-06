@@ -86,8 +86,9 @@
   .brand-text { display: none; }
   .lo-corner {
     display: flex; align-items: center; gap: 10px;
-    flex-shrink: 0;
+    flex-shrink: 0; cursor: pointer; border-radius: 999px;
   }
+  .lo-corner:hover { background: var(--panel-soft); }
   .lo-photo {
     width: 44px; height: 44px; border-radius: 50%;
     object-fit: cover; object-position: center 15%;
@@ -113,7 +114,7 @@
     padding: 4px 12px 4px 4px;
     box-shadow: var(--shadow);
   }
-  body.kiosk .present-chip { display: flex; top: 64px; }
+  body.kiosk .present-chip { display: none !important; }
   .brand-text {
     display: none;
   }
@@ -552,8 +553,7 @@
     border-top: 1px solid var(--border);
     border-bottom: 1px solid var(--border);
   }
-  table.compare td.best { color: var(--houzd-blue); font-weight: 700; background: #E7F6FD; }
-  table.compare td.worst { color: #6B7280; background: #F3F4F6; }
+  table.compare td.best, table.compare td.worst { color: var(--text); font-weight: 500; background: transparent; }
   .site-foot {
     margin-top: 28px; padding: 16px 8px 8px;
     border-top: 1px solid #D5D9DE;
@@ -698,11 +698,13 @@
   }
   table.amort th:first-child, table.amort td:first-child { text-align: left; color: var(--cement); }
   table.amort thead th {
-    background: var(--panel-soft); position: sticky; top: 0;
+    background: #F3F5F8; position: sticky; top: var(--app-header-h, 76px); z-index: 4;
     font-family: var(--font-head); font-weight: 600; color: var(--text);
     border-bottom: 1px solid var(--border-strong);
     font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
+    box-shadow: 0 1px 0 var(--border-strong);
   }
+  body.kiosk table.amort thead th { top: 56px; }
   table.amort tr.year-row td { background: var(--houzd-blue-soft); font-weight: 600; }
   .biweekly-banner {
     background: linear-gradient(135deg, var(--houzd-blue) 0%, var(--houzd-blue-deep) 100%);
@@ -865,36 +867,38 @@
 
   /* ---------- PRINT ---------- */
   @media print {
-    @page { margin: 0.5in; }
-    header.app { position: static; box-shadow: none; backdrop-filter: none; background: white; padding: 12px 0; border-bottom: 2px solid var(--houzd-blue); }
-    .header-actions, .add-scenario, .icon-btn, .amort-controls .icon-btn { display: none !important; }
-    body { background: white; font-size: 11pt; }
-    main { padding: 16px 0; max-width: none; }
-    .scenario, .stat, .chart-card, .panel, .summary, .card, .amort-table-wrap { box-shadow: none !important; break-inside: avoid; page-break-inside: avoid; }
-    .charts { grid-template-columns: 1fr 1fr; gap: 12px; }
-    .canvas-wrap { height: 200px !important; }
-    .donut-wrap { height: 200px !important; }
-    section { margin-bottom: 18px; page-break-inside: avoid; }
-    .scenarios { grid-template-columns: repeat(3, 1fr) !important; gap: 10px; }
-    .scenario { padding: 14px; }
-    .stat-grid { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
-    .stat { padding: 12px 14px; }
-    .stat .stat-value { font-size: 18px; }
-    .input-wrap input { padding: 6px 8px; font-size: 12px; }
-    .scenario-head { margin-bottom: 10px; }
-    .field-grid { gap: 8px 8px; }
-
+    @page { margin: 0.4in; }
+    header.app { position: static; box-shadow: none; backdrop-filter: none; background: white; padding: 6px 0; border-bottom: 2px solid var(--houzd-blue); }
+    .header-actions, .add-scenario, .icon-btn, .amort-controls, .loan-type-row,
+    .loom-section, #flyerSlot, .fee-builder-body, .fee-del, .toggle-pair, .btn,
+    .mobile-bottom-bar, .kiosk-bar, .present-chip { display: none !important; }
+    body { background: white; font-size: 9pt; }
+    main { padding: 8px 0 0; max-width: none; }
+    .scenario, .stat, .chart-card, .panel, .summary, .card { box-shadow: none !important; break-inside: avoid; page-break-inside: avoid; }
+    .amort-table-wrap { box-shadow: none !important; break-inside: auto; page-break-inside: auto; overflow: visible; border: none; }
+    section { margin-bottom: 8px; page-break-inside: auto; break-inside: auto; }
+    .scenarios { grid-template-columns: repeat(3, 1fr) !important; gap: 8px; }
+    .scenario { padding: 8px; }
+    .stat-grid { grid-template-columns: repeat(4, 1fr); gap: 6px; }
+    .stat { padding: 6px 8px; }
+    .stat .stat-value { font-size: 13px; }
+    .input-wrap input { padding: 2px 4px; font-size: 9pt; border: none; }
+    .field label { font-size: 8px; }
+    .scenario-head { margin-bottom: 4px; }
+    .field-grid { gap: 2px 6px; }
+    .scenario-donut-wrap, [data-donut-slot] { display: none !important; }
+    .points-card { break-inside: avoid; }
+    table.amort { font-size: 8pt; }
+    table.amort th, table.amort td { padding: 2px 5px; }
+    table.amort thead { display: table-header-group; }
+    table.amort thead th { position: static; top: auto; box-shadow: none; }
+    table.amort tr { break-inside: avoid; page-break-inside: avoid; }
+    table.compare td, table.compare th { padding: 3px 6px; font-size: 8pt; }
+    .site-foot { margin-top: 8px; font-size: 8pt; }
     body.kiosk header.app { display: flex !important; }
-    body.kiosk .present-chip { display: none !important; }
     .lo-corner, .brand-logo { display: flex; }
-    .brand-logo { display: block; height: 32px; }
-    .pdf-footer {
-      display: block !important;
-      position: fixed;
-      bottom: 0.3in; left: 0.3in;
-      font-family: 'Open Sans', sans-serif;
-      font-size: 9pt; color: var(--cement);
-    }
+    .brand-logo { display: block; height: 28px; }
+    .pdf-footer { display: none !important; }
   }
   .pdf-footer { display: none; }
 
@@ -950,19 +954,19 @@
   }
   .fee-section-label:first-child { margin-top: 0; padding-top: 0; }
   .fee-row {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 120px 56px 22px;
-    gap: 6px; align-items: center; margin-bottom: 5px;
+    display: flex; align-items: center; gap: 8px;
+    margin-bottom: 6px;
   }
   textarea.fee-name {
-    resize: none; width: 100%; min-height: 34px;
+    resize: none; width: auto; flex: 1 1 auto; min-width: 0; min-height: 34px;
     line-height: 1.25; padding: 2px 0; margin: 0;
     border: none; background: transparent; outline: none;
     font: inherit; font-size: 12px; color: var(--text);
     white-space: pre-wrap;
   }
   .fee-row .fee-name {
-    font-size: 12px; color: var(--text);
+    flex: 1 1 auto; min-width: 0;
+    font-size: 13px; color: var(--text);
     background: transparent; border: none;
     outline: none; font: inherit;
     padding: 4px 0;
@@ -972,9 +976,9 @@
     display: flex; align-items: center;
     border: 1px solid var(--border-strong); border-radius: 10px;
     overflow: hidden; background: var(--white);
-    width: 120px; min-width: 120px; max-width: 120px;
-    box-sizing: border-box; height: 34px;
-    justify-self: end;
+    width: 148px; min-width: 148px; max-width: 148px;
+    box-sizing: border-box; height: 36px;
+    margin-left: auto; flex: 0 0 148px;
   }
   .fee-row .fee-amt, .fee-row .fee-name { text-align: left; }
   .fee-row .fee-amt-wrap:focus-within { border-color: var(--houzd-blue); }
@@ -1070,7 +1074,7 @@
   }
   .fee-save-btn:hover { background: var(--charcoal); color: white; border-color: var(--charcoal); }
   @media (max-width: 640px) {
-    .fee-row { grid-template-columns: minmax(0, 1fr) 108px 48px; }
+    .fee-row .fee-amt-wrap { width: 120px; min-width: 120px; max-width: 120px; flex-basis: 120px; }
     .fee-del { display: none; }
   }
 
@@ -1325,7 +1329,11 @@
     box-shadow: 0 2px 12px rgba(0,0,0,.3);
   }
   body.kiosk .kiosk-bar { display: flex; }
-  body.kiosk main { padding-top: 78px; }
+  body.kiosk main { padding-top: 56px; }
+  .kiosk-lo { margin-left: auto; display: flex; align-items: center; gap: 8px; color: white; }
+  .kiosk-lo img { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; object-position: center 15%; border: 2px solid #fff; }
+  .kiosk-lo .kiosk-lo-name { font-family: var(--font-head); font-weight: 700; font-size: 13px; line-height: 1.1; }
+  .kiosk-lo .kiosk-lo-nmls { font-size: 10px; letter-spacing: .06em; opacity: .75; }
   .kiosk-title {
     font-family: var(--font-head); font-weight: 700; font-size: 14px;
     color: rgba(255,255,255,.7);
@@ -1335,7 +1343,7 @@
     color: white;
   }
   .kiosk-exit {
-    margin-left: auto;
+    margin-left: 12px;
     background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.2);
     color: white; padding: 7px 16px; border-radius: 8px;
     font: inherit; font-family: var(--font-head); font-weight: 600; font-size: 12px;
@@ -1588,6 +1596,13 @@
 <div class="kiosk-bar" id="kioskBar">
   <div class="kiosk-title">Houzd Mortgage Review &nbsp;·&nbsp;</div>
   <div class="kiosk-client" id="kioskClientName">—</div>
+  <div class="kiosk-lo">
+    <img id="kioskPhoto" alt="Carter Campbell">
+    <div>
+      <div class="kiosk-lo-name">Carter Campbell</div>
+      <div class="kiosk-lo-nmls">NMLS 918947</div>
+    </div>
+  </div>
   <button class="kiosk-exit" onclick="exitKiosk()">✕ Exit Presentation</button>
 </div>
 
@@ -2451,12 +2466,8 @@ function flyerSectionHTML(prefix, fnName, nameValue) {
   return '';
 }
 function mountStandardFlyer() {
-  flyerBarHTML(`
-    <input class="flyer-input" type="text" id="std_flyerName" value="${escapeHtml((state.standard && state.standard._flyerName) || '')}" placeholder="Prepared for — client name" data-skip-fmt="1">
-    <select class="flyer-input" id="std_flyerPick"></select>
-    <button class="btn btn-primary" onclick="generateStandardFlyer()">
-      <svg class="btn-icon"><use href="#i-print"/></svg>Generate Flyer
-    </button>`);
+  const slot = document.getElementById('flyerSlot');
+  if (slot) slot.innerHTML = '';
 }
 // Wire a flyer-name input to store on the given state object (and optional per-scenario index for standard)
 function wireFlyerName(prefix, stateObj) {
@@ -3385,9 +3396,15 @@ function renderStandardAmort(calcs) {
       byYear[r.year].balance = r.balance;
     });
 
-    let html = `<thead><tr><th>Year</th><th>Annual Interest</th><th>Annual Principal</th><th>Balance</th></tr></thead><tbody>`;
+    let html = `<thead><tr><th>Year</th><th>Payment</th><th>Interest</th><th>Principal</th><th>PMI</th><th>Tax+Ins+HOA</th><th>Total</th><th>Balance</th><th>Equity</th></tr></thead><tbody>`;
     Object.values(byYear).forEach(r => {
-      html += `<tr class="year-row"><td>Year ${r.year}</td><td>${fmt$(r.interest)}</td><td>${fmt$(r.principal)}</td><td>${fmt$(r.balance)}</td></tr>`;
+      const mRows = (c.rows || []).filter(x => x.year === r.year);
+      const pmi = mRows.reduce((sum, x) => sum + (x.pmi || 0), 0);
+      const escrow = mRows.reduce((sum, x) => sum + (x.escrow || 0), 0);
+      const endM = mRows[mRows.length - 1];
+      const equity = endM ? (endM.equity + endM.balance - r.balance) : 0;
+      const pmt = r.principal + r.interest;
+      html += `<tr class="year-row"><td>Year ${r.year}</td><td>${fmt$(pmt)}</td><td>${fmt$(r.interest)}</td><td>${fmt$(r.principal)}</td><td>${fmt$(pmi)}</td><td>${fmt$(escrow)}</td><td>${fmt$(pmt + pmi + escrow)}</td><td>${fmt$(r.balance)}</td><td>${fmt$(equity)}</td></tr>`;
     });
     html += '</tbody>';
     t.innerHTML = html;
@@ -3409,7 +3426,7 @@ function renderStandardAmort(calcs) {
     });
   } else {
     c.rows.forEach(r => {
-      html += `<tr><td>${r.month} <span style="color:var(--text-faint)">(yr ${r.year})</span></td><td>${fmt$(r.payment)}</td><td>${fmt$(r.interest)}</td><td>${fmt$(r.principal)}</td><td>${fmt$(r.pmi)}</td><td>${fmt$(r.escrow)}</td><td>${fmt$(r.totalPayment)}</td><td>${fmt$(r.balance)}</td><td>${fmt$(r.equity)}</td></tr>`;
+      html += `<tr class="year-row"><td>${r.month} <span style="color:var(--text-faint)">(yr ${r.year})</span></td><td>${fmt$(r.payment)}</td><td>${fmt$(r.interest)}</td><td>${fmt$(r.principal)}</td><td>${fmt$(r.pmi)}</td><td>${fmt$(r.escrow)}</td><td>${fmt$(r.totalPayment)}</td><td>${fmt$(r.balance)}</td><td>${fmt$(r.equity)}</td></tr>`;
     });
   }
   html += '</tbody>';
@@ -3698,11 +3715,11 @@ function renderBuydownOutputs() {
 // ---- Shared flyer shell: CSS + header + footer + print bar, used by every tab ----
 // opts: { title, tag, subtitle, clientName, cardCount, heroHTML, bodyHTML, docTitle }
 function openFlyer(opts) {
-  const lo = state.reportLO || {};
-  const loName = lo.name || 'Carter Campbell';
-  const loPhone = lo.phone || '801.206.9379';
-  const loEmail = lo.email || 'carter.campbell@houzd.com';
-  const loNMLS = lo.nmls || '918947';
+  const lo = currentLO();
+  const loName = lo.name;
+  const loPhone = lo.phone;
+  const loEmail = lo.email;
+  const loNMLS = lo.nmls;
   const today = new Date().toLocaleDateString('en-US', { year:'numeric', month:'short', day:'numeric' });
   const clientName = (opts.clientName || '').trim();
   const cardCount = opts.cardCount || 3;
@@ -3784,7 +3801,7 @@ html,body { font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; color:#1C23
 <div class="page">
   <div class="head" style="display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid #00A0E8;padding-bottom:12px;">
     <div style="display:flex;align-items:center;gap:12px;">
-      <img src="${CARTER_PHOTO}" alt="Carter Campbell" style="width:64px;height:64px;border-radius:50%;object-fit:cover;object-position:center 15%;">
+      <img src="${lo.photo}" alt="Carter Campbell" style="width:64px;height:64px;border-radius:50%;object-fit:cover;object-position:center 15%;">
       <div>
         <div style="font-weight:700;font-size:16px;color:#111;">${escapeHtml(loName)}</div>
         <div style="font-size:11px;color:#5c6570;margin-top:2px;">NMLS ${escapeHtml(loNMLS)} · Houzd Mortgage</div>
@@ -3808,13 +3825,14 @@ html,body { font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; color:#1C23
   ${opts.bodyHTML || ''}
   <div style="flex:1;"></div>
   <div class="foot">
-    <div class="lo" style="flex-direction:row;align-items:center;gap:10px;"><img src="${CARTER_PHOTO}" alt="Carter Campbell" style="width:44px;height:44px;border-radius:50%;object-fit:cover;object-position:center 15%;border:2px solid #00A0E8;flex-shrink:0;"><div style="display:flex;flex-direction:column;gap:2px;"><span class="nm">${escapeHtml(loName)}</span><span class="rl">Mortgage Loan Officer</span><span class="ct">${escapeHtml(loPhone)} &middot; ${escapeHtml(loEmail)}</span></div></div>
+    <div class="lo" style="flex-direction:row;align-items:center;gap:10px;"><img src="${lo.photo}" alt="Carter Campbell" style="width:44px;height:44px;border-radius:50%;object-fit:cover;object-position:center 15%;border:2px solid #00A0E8;flex-shrink:0;"><div style="display:flex;flex-direction:column;gap:2px;"><span class="nm">${escapeHtml(loName)}</span><span class="rl">Mortgage Loan Officer</span><span class="ct">${escapeHtml(loPhone)} &middot; ${escapeHtml(loEmail)}</span></div></div>
     <div class="foot-right"><img src="${HOUZD_LOGO}" alt="Houzd Mortgage" style="height:26px;width:auto;margin-bottom:4px;"><br>Houzd Mortgage · NMLS #${escapeHtml(loNMLS)} · Equal Housing Lender</div>
   </div>
   <div class="disc">${disc}</div>
 </div>
 </body></html>`;
 
+  if (opts.returnHTML) return html;
   const w = window.open('', '_blank');
   if (!w) { alert('Please allow pop-ups to generate the flyer.'); return; }
   w.document.open(); w.document.write(html); w.document.close();
@@ -3885,11 +3903,11 @@ function generateBuydownFlyer() {
   const noteFullPITI = noteYp.pitiNoSubsidy;
   const maxPart = Math.max(...pitiParts.map(p => p.val));
 
-  const lo = state.reportLO || {};
-  const loName = lo.name || 'Carter Campbell';
-  const loPhone = lo.phone || '801.206.9379';
-  const loEmail = lo.email || 'carter.campbell@houzd.com';
-  const loNMLS = lo.nmls || '918947';
+  const lo = currentLO();
+  const loName = lo.name;
+  const loPhone = lo.phone;
+  const loEmail = lo.email;
+  const loNMLS = lo.nmls;
 
   const paidByText = s.paidBy === 'buyer' ? 'paid by the borrower at closing'
     : s.paidBy === 'lender' ? 'typically structured as a lender credit'
@@ -4002,7 +4020,7 @@ html,body { font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; color:#1C23
 <div class="page">
   <div class="head" style="display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid #00A0E8;padding-bottom:12px;">
     <div style="display:flex;align-items:center;gap:12px;">
-      <img src="${CARTER_PHOTO}" alt="Carter Campbell" style="width:64px;height:64px;border-radius:50%;object-fit:cover;object-position:center 15%;">
+      <img src="${lo.photo}" alt="Carter Campbell" style="width:64px;height:64px;border-radius:50%;object-fit:cover;object-position:center 15%;">
       <div>
         <div style="font-weight:700;font-size:16px;">${escapeHtml(loName)}</div>
         <div style="font-size:11px;color:#5c6570;margin-top:2px;">NMLS ${escapeHtml(loNMLS)} · Houzd Mortgage</div>
@@ -4048,7 +4066,7 @@ html,body { font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; color:#1C23
   </div>
   <div style="flex:1;"></div>
   <div class="foot">
-    <div class="lo" style="flex-direction:row;align-items:center;gap:10px;"><img src="${CARTER_PHOTO}" alt="Carter Campbell" style="width:44px;height:44px;border-radius:50%;object-fit:cover;object-position:center 15%;border:2px solid #00A0E8;flex-shrink:0;"><div style="display:flex;flex-direction:column;gap:2px;"><span class="nm">${escapeHtml(loName)}</span><span class="rl">Mortgage Loan Officer</span><span class="ct">${escapeHtml(loPhone)} &middot; ${escapeHtml(loEmail)}</span></div></div>
+    <div class="lo" style="flex-direction:row;align-items:center;gap:10px;"><img src="${lo.photo}" alt="Carter Campbell" style="width:44px;height:44px;border-radius:50%;object-fit:cover;object-position:center 15%;border:2px solid #00A0E8;flex-shrink:0;"><div style="display:flex;flex-direction:column;gap:2px;"><span class="nm">${escapeHtml(loName)}</span><span class="rl">Mortgage Loan Officer</span><span class="ct">${escapeHtml(loPhone)} &middot; ${escapeHtml(loEmail)}</span></div></div>
     <div class="foot-right"><img src="${HOUZD_LOGO}" alt="Houzd Mortgage" style="height:26px;width:auto;margin-bottom:4px;"><br>Houzd Mortgage · NMLS #${escapeHtml(loNMLS)} · Equal Housing Lender</div>
   </div>
   <div class="disc">This is an estimate for illustrative purposes only and does not constitute a loan approval, commitment to lend, or a Loan Estimate. Payment figures show principal, interest, taxes, insurance, and any applicable mortgage insurance only; they exclude closing costs and prepaid items, which will increase total funds required at closing. The ${typeLabel} temporary buydown reduces the effective interest rate during the buydown period, returning to the ${c.noteRate.toFixed(3)}% note rate afterward. Rates, terms, taxes, insurance, and mortgage insurance amounts are subject to change and require verification. All loans subject to credit approval and underwriting. Actual figures may vary.</div>
@@ -5416,6 +5434,15 @@ document.addEventListener('DOMContentLoaded', () => {
   const fmtRoot = document.getElementById('main');
   if (fmtRoot) new MutationObserver(() => decorateInputs(fmtRoot)).observe(fmtRoot, { childList: true, subtree: true });
   renderMode();
+  applyLOToChrome();
+  const syncHeaderOffset = () => {
+    const h = document.querySelector('header.app');
+    if (h) document.documentElement.style.setProperty('--app-header-h', h.offsetHeight + 'px');
+  };
+  syncHeaderOffset();
+  window.addEventListener('resize', syncHeaderOffset);
+  const loCorner = document.querySelector('.lo-corner');
+  if (loCorner) loCorner.addEventListener('click', openLOEditor);
 
   // --- LOOM INIT (needs state already loaded) ---
   const loomInput = document.getElementById('loomUrl');
@@ -5617,6 +5644,13 @@ function wirePrepaidInputs(idx) {
         // Update the readonly $ field in place
         const amtEl = body.querySelector(`.fee-amt[data-pre-idx="${i}"][data-item="${ii}"]`);
         if (amtEl) { amtEl.value = Math.round(item.amt); if (amtEl.dataset.fmt) paintFormatted(amtEl); }
+        const figs = e.target.closest('.prepaid-item') && e.target.closest('.prepaid-item').querySelector('.prepaid-figs');
+        if (figs) {
+          const f = prepaidFigures(item, ctx);
+          figs.innerHTML = item.kind === 'perDiem'
+            ? `<span>${fmt$(f.full || item.amt || 0)}</span>`
+            : `<span>${fmt$(f.annual || 0)}/yr</span><span>${fmt$(f.monthly || 0)}/mo</span>`;
+        }
         syncPrepaidTotal(i);
       } else if (field === 'amt') {
         // Only reachable for flat items (parameterized ones are readonly)
@@ -7483,11 +7517,11 @@ function generateBridgeFlyer() {
 
   const clientName = (s.flyerName || '').trim();
   const today = new Date().toLocaleDateString('en-US', { year:'numeric', month:'short', day:'numeric' });
-  const lo = state.reportLO || {};
-  const loName = lo.name || 'Carter Campbell';
-  const loPhone = lo.phone || '801.206.9379';
-  const loEmail = lo.email || 'carter.campbell@houzd.com';
-  const loNMLS = lo.nmls || '918947';
+  const lo = currentLO();
+  const loName = lo.name;
+  const loPhone = lo.phone;
+  const loEmail = lo.email;
+  const loNMLS = lo.nmls;
 
   // Three "phase" cards: the overlap total, the bridge piece, and after-sale
   const overlapParts = [];
@@ -7570,7 +7604,7 @@ html,body { font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; color:#1C23
 <div class="page">
   <div class="head" style="display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid #00A0E8;padding-bottom:12px;">
     <div style="display:flex;align-items:center;gap:12px;">
-      <img src="${CARTER_PHOTO}" alt="Carter Campbell" style="width:64px;height:64px;border-radius:50%;object-fit:cover;object-position:center 15%;">
+      <img src="${lo.photo}" alt="Carter Campbell" style="width:64px;height:64px;border-radius:50%;object-fit:cover;object-position:center 15%;">
       <div>
         <div style="font-weight:700;font-size:16px;">${escapeHtml(loName)}</div>
         <div style="font-size:11px;color:#5c6570;margin-top:2px;">NMLS ${escapeHtml(loNMLS)} · Houzd Mortgage</div>
@@ -7653,7 +7687,7 @@ html,body { font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; color:#1C23
   </div>
   <div style="flex:1;"></div>
   <div class="foot">
-    <div class="lo" style="flex-direction:row;align-items:center;gap:10px;"><img src="${CARTER_PHOTO}" alt="Carter Campbell" style="width:44px;height:44px;border-radius:50%;object-fit:cover;object-position:center 15%;border:2px solid #00A0E8;flex-shrink:0;"><div style="display:flex;flex-direction:column;gap:2px;"><span class="nm">${escapeHtml(loName)}</span><span class="rl">Mortgage Loan Officer</span><span class="ct">${escapeHtml(loPhone)} &middot; ${escapeHtml(loEmail)}</span></div></div>
+    <div class="lo" style="flex-direction:row;align-items:center;gap:10px;"><img src="${lo.photo}" alt="Carter Campbell" style="width:44px;height:44px;border-radius:50%;object-fit:cover;object-position:center 15%;border:2px solid #00A0E8;flex-shrink:0;"><div style="display:flex;flex-direction:column;gap:2px;"><span class="nm">${escapeHtml(loName)}</span><span class="rl">Mortgage Loan Officer</span><span class="ct">${escapeHtml(loPhone)} &middot; ${escapeHtml(loEmail)}</span></div></div>
     <div class="foot-right"><img src="${HOUZD_LOGO}" alt="Houzd Mortgage" style="height:26px;width:auto;margin-bottom:4px;"><br>Houzd Mortgage · NMLS #${escapeHtml(loNMLS)} · Equal Housing Lender</div>
   </div>
   <div class="disc">This is an estimate for illustrative purposes only and does not constitute a loan approval, commitment to lend, or a Loan Estimate. Bridge loan figures assume the departing residence sells at the expected price within the stated term; if it does not, extension fees and additional interest may apply. Payment and proceeds figures exclude some closing costs and prepaid items. Bridge financing requires a credible exit and is subject to credit approval, underwriting, and property valuation. Rates, terms, and fees vary by lender and are subject to change. Actual figures may vary.</div>
@@ -7670,13 +7704,13 @@ html,body { font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; color:#1C23
 //======================================================
 // FLYER: STANDARD (single scenario or best of compared)
 //======================================================
-function generateStandardFlyer() {
-  // Use the scenario chosen in the flyer picker, default to first
-  const idx = state.standard?._flyerIdx != null ? state.standard._flyerIdx : 0;
+function generateStandardFlyer(opts) {
+  opts = opts || {};
+  const idx = opts.idx != null ? opts.idx : (state.standard?._flyerIdx != null ? state.standard._flyerIdx : 0);
   const s = state.standard?.[idx];
   if (!s) { alert('Add a scenario first.'); return; }
   const c = calcStandard(s);
-  const name = (state.standard._flyerName || '').trim();
+  const name = opts.clientName != null ? String(opts.clientName).trim() : (state.standard._flyerName || '').trim();
   const dpPct = s.dpType === 'pct' ? num(s.downPmt).toFixed(num(s.downPmt)%1===0?0:2)+'%' : fmt$(c.downPayment);
   const ltv = c.homePrice>0 ? (c.loan/c.homePrice*100) : 0;
 
@@ -7713,7 +7747,7 @@ function generateStandardFlyer() {
     </div>
   </div>`;
 
-  openFlyer({
+  return openFlyer({
     docTitle: 'Houzd Loan Summary',
     tag: 'Loan Summary',
     title: `Your Monthly Payment Breakdown`,
@@ -7722,6 +7756,7 @@ function generateStandardFlyer() {
     cardCount: 3,
     heroHTML: flyerCards(cards),
     bodyHTML: body,
+    returnHTML: !!opts.returnHTML,
   });
 }
 
@@ -8991,7 +9026,7 @@ function openReportModal() {
     modal = document.createElement('div');
     modal.id = 'reportModal';
     modal.innerHTML = `
-      <div id="reportModalBackdrop" onclick="closeReportModal()" style="position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:900;backdrop-filter:blur(3px);"></div>
+      <div id="reportModalBackdrop" style="position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:900;backdrop-filter:blur(3px);"></div>
       <div style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:901;
         background:#fff;border-radius:18px;width:420px;padding:32px;
         box-shadow:0 24px 80px rgba(0,0,0,.25);font-family:var(--font-body);">
@@ -9004,59 +9039,28 @@ function openReportModal() {
               style="width:100%;border:1px solid var(--border-strong);border-radius:10px;padding:10px 12px;font:inherit;font-size:14px;outline:none;color:var(--text);">
           </div>
           <div>
-            <label style="font-family:var(--font-head);font-size:11px;font-weight:600;color:var(--cement);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:5px;">Loan Officer Name</label>
-            <input id="rpt_loName" type="text" value="Carter Campbell" placeholder="e.g. Carter Campbell"
-              style="width:100%;border:1px solid var(--border-strong);border-radius:10px;padding:10px 12px;font:inherit;font-size:14px;outline:none;color:var(--text);">
-          </div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-            <div>
-              <label style="font-family:var(--font-head);font-size:11px;font-weight:600;color:var(--cement);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:5px;">Phone</label>
-              <input id="rpt_phone" type="text" value="(801) 206-9379" placeholder="(801) 206-9379"
-                style="width:100%;border:1px solid var(--border-strong);border-radius:10px;padding:10px 12px;font:inherit;font-size:14px;outline:none;color:var(--text);">
-            </div>
-            <div>
-              <label style="font-family:var(--font-head);font-size:11px;font-weight:600;color:var(--cement);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:5px;">Email</label>
-              <input id="rpt_email" type="text" value="carter.campbell@houzd.com" placeholder="carter.campbell@houzd.com"
-                style="width:100%;border:1px solid var(--border-strong);border-radius:10px;padding:10px 12px;font:inherit;font-size:14px;outline:none;color:var(--text);">
-            </div>
-          </div>
-          <div>
-            <label style="font-family:var(--font-head);font-size:11px;font-weight:600;color:var(--cement);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:5px;">LO NMLS #</label>
-            <input id="rpt_nmls" type="text" value="918947" placeholder="918947"
-              style="width:100%;border:1px solid var(--border-strong);border-radius:10px;padding:10px 12px;font:inherit;font-size:14px;outline:none;color:var(--text);">
+            <label style="font-family:var(--font-head);font-size:11px;font-weight:600;color:var(--cement);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:5px;">Flyer scenario</label>
+            <select id="rpt_flyerScenario" style="width:100%;border:1px solid var(--border-strong);border-radius:10px;padding:10px 12px;font:inherit;font-size:14px;outline:none;color:var(--text);background:#fff;"></select>
           </div>
         </div>
-        <div style="display:flex;gap:10px;margin-bottom:8px;">
-          <button onclick="closeReportModal()" style="flex:1;padding:12px;border:1px solid var(--border-strong);border-radius:10px;background:#fff;font:inherit;font-family:var(--font-head);font-weight:600;font-size:13px;cursor:pointer;color:var(--cement);">Cancel</button>
-          <button onclick="generateAndDownloadReport()" style="flex:2;padding:12px;border:none;border-radius:10px;background:var(--houzd-blue);color:#fff;font:inherit;font-family:var(--font-head);font-weight:700;font-size:13px;cursor:pointer;letter-spacing:.02em;">
-            ↓ Download Report
-          </button>
-        </div>
-        <button onclick="generateAndOpenReport()" style="width:100%;padding:11px;border:1px solid var(--border-strong);border-radius:10px;background:#fff;font:inherit;font-family:var(--font-head);font-weight:600;font-size:13px;cursor:pointer;color:var(--text);">
-          Open in new tab (then print to PDF)
-        </button>
+        <button onclick="generateAndDownloadReport()" style="width:100%;padding:12px;border:none;border-radius:10px;background:var(--houzd-blue);color:#fff;font:inherit;font-family:var(--font-head);font-weight:700;font-size:13px;cursor:pointer;margin-bottom:8px;">Download report</button>
+        <button onclick="generateAndOpenReport()" style="width:100%;padding:11px;border:1px solid var(--border-strong);border-radius:10px;background:#fff;font:inherit;font-family:var(--font-head);font-weight:600;font-size:13px;cursor:pointer;color:var(--text);margin-bottom:8px;">Open report in a new tab</button>
+        <button onclick="downloadFlyerFromModal()" style="width:100%;padding:12px;border:none;border-radius:10px;background:var(--charcoal);color:#fff;font:inherit;font-family:var(--font-head);font-weight:700;font-size:13px;cursor:pointer;margin-bottom:8px;">Download flyer</button>
+        <button onclick="openFlyerFromModal()" style="width:100%;padding:11px;border:1px solid var(--border-strong);border-radius:10px;background:#fff;font:inherit;font-family:var(--font-head);font-weight:600;font-size:13px;cursor:pointer;color:var(--text);margin-bottom:14px;">Open flyer in a new tab</button>
+        <button onclick="closeReportModal()" style="width:100%;padding:11px;border:1px solid var(--border-strong);border-radius:10px;background:#fff;font:inherit;font-family:var(--font-head);font-weight:600;font-size:13px;cursor:pointer;color:var(--cement);">Cancel</button>
       </div>`;
     document.body.appendChild(modal);
 
-    // Restore saved LO info
-    const lo = state.reportLO || {};
-    document.getElementById('rpt_clientName').value = lo.clientName || '';
-    document.getElementById('rpt_loName').value = lo.loName || 'Carter Campbell';
-    document.getElementById('rpt_phone').value = lo.phone || '(801) 206-9379';
-    document.getElementById('rpt_email').value = lo.email || 'carter.campbell@houzd.com';
-    document.getElementById('rpt_nmls').value = lo.nmls || '918947';
-    ['rpt_clientName','rpt_loName','rpt_phone','rpt_email','rpt_nmls'].forEach(id => {
-      document.getElementById(id).addEventListener('input', () => {
-        state.reportLO = {
-          clientName: document.getElementById('rpt_clientName').value,
-          loName: document.getElementById('rpt_loName').value,
-          phone: document.getElementById('rpt_phone').value,
-          email: document.getElementById('rpt_email').value,
-          nmls: document.getElementById('rpt_nmls').value,
-        };
-        saveState();
-      });
+    document.getElementById('rpt_clientName').addEventListener('input', () => {
+      state.reportLO = Object.assign({}, state.reportLO || {}, { clientName: document.getElementById('rpt_clientName').value });
+      saveState();
     });
+  }
+  document.getElementById('rpt_clientName').value = (state.reportLO && state.reportLO.clientName) || '';
+  const flyerSel = document.getElementById('rpt_flyerScenario');
+  if (flyerSel) {
+    flyerSel.innerHTML = (state.standard || []).map((s, i) => `<option value="${i}">${escapeHtml(s.name || ('Scenario ' + String.fromCharCode(65 + i)))}</option>`).join('');
+    if (state.standard && state.standard._flyerIdx != null) flyerSel.value = String(state.standard._flyerIdx);
   }
   modal.style.display = 'block';
 }
@@ -9066,16 +9070,45 @@ function closeReportModal() {
 }
 
 function getReportMeta() {
+  const lo = currentLO();
   return {
-    clientName: document.getElementById('rpt_clientName')?.value || 'Your Client',
-    loName: document.getElementById('rpt_loName')?.value || 'Carter Campbell',
-    phone: document.getElementById('rpt_phone')?.value || '(801) 206-9379',
-    email: document.getElementById('rpt_email')?.value || 'carter.campbell@houzd.com',
-    nmls: document.getElementById('rpt_nmls')?.value || '918947',
-    qrUrl: document.getElementById('rpt_qrUrl')?.value || 'https://houzd.com',
+    clientName: document.getElementById('rpt_clientName')?.value || (state.reportLO && state.reportLO.clientName) || 'Your Client',
+    loName: lo.name,
+    phone: lo.phone,
+    email: lo.email,
+    nmls: lo.nmls,
+    photo: lo.photo,
     date: new Date().toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' }),
     mode: state.mode,
   };
+}
+function flyerOptsFromModal() {
+  const sel = document.getElementById('rpt_flyerScenario');
+  const idx = sel ? parseInt(sel.value || '0', 10) : 0;
+  const clientName = (document.getElementById('rpt_clientName')?.value || '').trim();
+  state.standard._flyerIdx = idx;
+  state.standard._flyerName = clientName;
+  if (state.reportLO) state.reportLO.clientName = clientName;
+  else state.reportLO = { clientName };
+  saveState();
+  return { idx, clientName };
+}
+function downloadFlyerFromModal() {
+  const picked = flyerOptsFromModal();
+  const html = generateStandardFlyer({ idx: picked.idx, clientName: picked.clientName, returnHTML: true });
+  if (!html) return;
+  const blob = new Blob([html], { type: 'text/html' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `houzd-flyer-${(picked.clientName || 'client').toLowerCase().replace(/\s+/g, '-')}.html`;
+  a.click();
+  URL.revokeObjectURL(url);
+  closeReportModal();
+}
+function openFlyerFromModal() {
+  const picked = flyerOptsFromModal();
+  generateStandardFlyer({ idx: picked.idx, clientName: picked.clientName });
 }
 
 function generateAndDownloadReport() {
@@ -9093,9 +9126,9 @@ function generateAndDownloadReport() {
 function generateAndOpenReport() {
   const html = buildReportHTML();
   const win = window.open('', '_blank');
+  if (!win) { alert('Please allow pop-ups to open the report.'); return; }
   win.document.write(html);
   win.document.close();
-  closeReportModal();
 }
 
 function generateAndShareNetlify() {
@@ -9195,18 +9228,18 @@ body{font-family:var(--b);background:var(--bg);color:var(--ink);font-size:13px;-
 .page{width:780px;margin:0 auto;background:var(--white);box-shadow:0 4px 40px rgba(0,0,0,.1);}
 
 /* header */
-.rpt-head{background:#fff;padding:22px 32px 16px;display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid var(--blue);}
+.rpt-head{background:#fff;padding:12px 22px 10px;display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid var(--blue);}
 .ws-lo{display:flex;align-items:center;gap:12px;}
-.ws-lo img{width:68px;height:68px;border-radius:50%;object-fit:cover;object-position:center 15%;}
+.ws-lo img{width:52px;height:52px;border-radius:50%;object-fit:cover;object-position:center 15%;}
 .ws-titleblock{text-align:right;}
-.ws-doctitle{font-family:var(--h);font-weight:800;font-size:18px;color:var(--blue);letter-spacing:.03em;text-transform:uppercase;}
+.ws-doctitle{font-family:var(--h);font-weight:800;font-size:15px;color:var(--blue);letter-spacing:.03em;text-transform:uppercase;}
 .rpt-head-left{display:flex;flex-direction:column;gap:14px;}
 .logo{display:flex;align-items:center;gap:10px;}
 .logo svg{width:20px;height:26px;}
 .logo-name{font-family:var(--h);font-weight:800;font-size:15px;color:#fff;letter-spacing:-.02em;}
 .logo-name span{color:rgba(255,255,255,.35);font-weight:500;}
 .for-label{font-family:var(--h);font-size:10px;font-weight:700;color:var(--sub);text-transform:uppercase;letter-spacing:.14em;margin-top:8px;}
-.client-name{font-family:var(--h);font-weight:800;font-size:20px;color:var(--ink);letter-spacing:-.02em;}
+.client-name{font-family:var(--h);font-weight:800;font-size:16px;color:var(--ink);letter-spacing:-.02em;}
 .report-date{font-size:12px;color:var(--sub);margin-top:2px;}
 .mode-badge{display:inline-flex;align-items:center;background:var(--blue);color:#fff;font-family:var(--h);font-weight:700;font-size:10px;letter-spacing:.06em;padding:4px 12px;border-radius:20px;margin-top:6px;}
 .rpt-head-right{display:flex;flex-direction:column;align-items:flex-end;gap:3px;text-align:right;}
@@ -9214,8 +9247,8 @@ body{font-family:var(--b);background:var(--bg);color:var(--ink);font-size:13px;-
 .lo-info-rpt{font-size:12px;color:var(--sub);margin-top:2px;}
 
 /* body */
-.body{padding:28px 36px 22px;}
-.sec-title{font-family:var(--h);font-weight:700;font-size:10px;color:var(--sub);text-transform:uppercase;letter-spacing:.14em;display:flex;align-items:center;gap:10px;margin-bottom:14px;margin-top:22px;}
+.body{padding:12px 22px 10px;}
+.sec-title{font-family:var(--h);font-weight:700;font-size:10px;color:var(--sub);text-transform:uppercase;letter-spacing:.14em;display:flex;align-items:center;gap:10px;margin-bottom:6px;margin-top:10px;}
 .sec-title:first-child{margin-top:0;}
 .sec-title::after{content:'';flex:1;height:1px;background:var(--border);}
 
@@ -9282,26 +9315,139 @@ body{font-family:var(--b);background:var(--bg);color:var(--ink);font-size:13px;-
 .print-tip{font-size:12px;color:var(--sub);}
 
 @media print{
-  @page{size:letter;margin:.4in;}
-  body{background:#fff;}
-  .page{width:100%;box-shadow:none;}
+  @page{size:letter;margin:0.35in;}
+  html,body{background:#fff;font-size:11px;}
+  .page{width:auto;box-shadow:none;}
   .print-actions{display:none!important;}
-  .charts-2x2{page-break-inside:avoid;}
-  .opt-grid{page-break-inside:avoid;}
+  .rpt-head{padding:0 0 8px;}
+  .ws-lo img{width:42px;height:42px;}
+  .ws-doctitle{font-size:13px;}
+  .client-name{font-size:14px;}
+  .body{padding:8px 0 0;}
+  .sec-title{margin:6px 0 3px;}
+  .opt-grid{gap:6px;page-break-inside:avoid;}
+  .opt-head{padding:6px 8px;}
+  .opt-piti{font-size:15px;}
+  .opt-row{padding:3px 8px;font-size:10px;}
+  .kstats{gap:6px;}
+  .kstat{padding:6px 8px;}
+  .kstat-value{font-size:14px;}
+  .cmp-table{font-size:10px;}
+  .cmp-table th,.cmp-table td{padding:3px 6px;}
+  .summary-box{padding:8px 10px;font-size:11px;line-height:1.4;}
+  .disclaimer{font-size:7px;padding-top:6px;line-height:1.35;}
+  .rpt-foot{padding:8px 0 0;}
 }`;
 }
 
 /* ---------- Header / Footer ---------- */
 function formatPhone(p) {
   const d = String(p || '').replace(/\D/g, '');
-  const n = d.length === 11 && d[0] === '1' ? d.slice(1) : d;
+  let n = d;
+  if (n.length === 11 && n[0] === '1') n = n.slice(1);
+  else if (n.length > 10) n = n.slice(0, 10);
   if (n.length === 10) return '(' + n.slice(0, 3) + ') ' + n.slice(3, 6) + '-' + n.slice(6);
   return p || '';
+}
+function currentLO() {
+  const lo = state.reportLO || {};
+  return {
+    name: lo.loName || lo.name || 'Carter Campbell',
+    phone: formatPhone(lo.phone || '8012069379'),
+    email: lo.email || 'carter.campbell@houzd.com',
+    nmls: lo.nmls || '918947',
+    photo: lo.photo || CARTER_PHOTO,
+  };
+}
+function applyLOToChrome() {
+  const lo = currentLO();
+  document.querySelectorAll('.lo-corner-name, .kiosk-lo-name').forEach(el => { el.textContent = lo.name; });
+  document.querySelectorAll('.lo-corner-role').forEach(el => { el.textContent = 'NMLS ' + lo.nmls; });
+  document.querySelectorAll('.kiosk-lo-nmls').forEach(el => { el.textContent = 'NMLS ' + lo.nmls; });
+  ['loCornerPhoto', 'presentPhoto', 'kioskPhoto'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { el.src = lo.photo; el.alt = lo.name; }
+  });
+  const foot = document.querySelector('.site-foot');
+  if (foot) foot.textContent = lo.name + ' · Houzd Mortgage · NMLS ' + lo.nmls + ' · ' + lo.email + ' · ' + lo.phone + ' · Equal Housing Lender';
+}
+function openLOEditor() {
+  const lo = currentLO();
+  let modal = document.getElementById('loEditor');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'loEditor';
+    modal.innerHTML = `
+      <div style="position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:940;"></div>
+      <div style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:941;background:#fff;border-radius:18px;width:420px;max-width:calc(100vw - 32px);padding:28px;box-shadow:0 24px 80px rgba(0,0,0,.25);font-family:var(--font-body);">
+        <div style="font-family:var(--font-head);font-weight:700;font-size:18px;margin-bottom:4px;">Your information</div>
+        <div style="font-size:13px;color:var(--text-muted);margin-bottom:16px;">This name, photo, and contact info show on the page and on every handout.</div>
+        <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;">
+          <img id="loEditPhoto" alt="" style="width:72px;height:72px;border-radius:50%;object-fit:cover;object-position:center 15%;border:2px solid var(--houzd-blue);">
+          <label style="font-family:var(--font-head);font-size:12px;font-weight:700;color:var(--houzd-blue);cursor:pointer;">Change photo
+            <input id="loEditFile" type="file" accept="image/*" style="display:none;">
+          </label>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <input id="loEditName" type="text" placeholder="Name" style="width:100%;border:1px solid var(--border-strong);border-radius:10px;padding:10px 12px;font:inherit;font-size:14px;">
+          <input id="loEditPhone" type="text" placeholder="Phone" style="width:100%;border:1px solid var(--border-strong);border-radius:10px;padding:10px 12px;font:inherit;font-size:14px;">
+          <input id="loEditEmail" type="text" placeholder="Email" style="width:100%;border:1px solid var(--border-strong);border-radius:10px;padding:10px 12px;font:inherit;font-size:14px;">
+          <input id="loEditNmls" type="text" placeholder="NMLS" style="width:100%;border:1px solid var(--border-strong);border-radius:10px;padding:10px 12px;font:inherit;font-size:14px;">
+        </div>
+        <div style="display:flex;gap:10px;margin-top:18px;">
+          <button id="loEditCancel" type="button" style="flex:1;padding:12px;border:1px solid var(--border-strong);border-radius:10px;background:#fff;font:inherit;font-family:var(--font-head);font-weight:600;cursor:pointer;">Cancel</button>
+          <button id="loEditSave" type="button" style="flex:1;padding:12px;border:none;border-radius:10px;background:var(--houzd-blue);color:#fff;font:inherit;font-family:var(--font-head);font-weight:700;cursor:pointer;">Save</button>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+    document.getElementById('loEditCancel').onclick = () => { modal.style.display = 'none'; };
+    document.getElementById('loEditPhone').addEventListener('blur', (e) => { e.target.value = formatPhone(e.target.value); });
+    document.getElementById('loEditFile').addEventListener('change', (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        const img = new Image();
+        img.onload = () => {
+          const size = 256;
+          const canvas = document.createElement('canvas');
+          canvas.width = size; canvas.height = size;
+          const ctx = canvas.getContext('2d');
+          const scale = Math.max(size / img.width, size / img.height);
+          const w = img.width * scale, h = img.height * scale;
+          ctx.drawImage(img, (size - w) / 2, (size - h) / 2, w, h);
+          document.getElementById('loEditPhoto').src = canvas.toDataURL('image/jpeg', 0.82);
+        };
+        img.src = reader.result;
+      };
+      reader.readAsDataURL(file);
+    });
+    document.getElementById('loEditSave').onclick = () => {
+      const photo = document.getElementById('loEditPhoto').src;
+      state.reportLO = Object.assign({}, state.reportLO || {}, {
+        loName: document.getElementById('loEditName').value.trim() || 'Carter Campbell',
+        phone: formatPhone(document.getElementById('loEditPhone').value),
+        email: document.getElementById('loEditEmail').value.trim() || 'carter.campbell@houzd.com',
+        nmls: document.getElementById('loEditNmls').value.trim() || '918947',
+        photo: photo && photo.indexOf('data:image') === 0 ? photo : (state.reportLO && state.reportLO.photo) || '',
+      });
+      if (!state.reportLO.photo) delete state.reportLO.photo;
+      saveState();
+      applyLOToChrome();
+      modal.style.display = 'none';
+    };
+  }
+  document.getElementById('loEditPhoto').src = lo.photo;
+  document.getElementById('loEditName').value = lo.name;
+  document.getElementById('loEditPhone').value = lo.phone;
+  document.getElementById('loEditEmail').value = lo.email;
+  document.getElementById('loEditNmls').value = lo.nmls;
+  modal.style.display = 'block';
 }
 function reportHeader(meta, modeLabel) {
   return `<div class="rpt-head">
     <div class="ws-lo">
-      <img src="${CARTER_PHOTO}" alt="Carter Campbell">
+      <img src="${meta.photo}" alt="${escapeHtml(meta.loName)}">
       <div>
         <div class="lo-name-rpt">${escapeHtml(meta.loName)}</div>
         <div class="lo-info-rpt">NMLS ${escapeHtml(meta.nmls)} · Houzd Mortgage</div>
@@ -9334,6 +9480,7 @@ function reportDisclaimer(meta) {
 
 /* ---------- Section renderer ---------- */
 function renderSection(s) {
+  if (s.type === 'charts') return '';
   let html = `<div class="sec-title">${escapeHtml(s.title)}</div>`;
   if (s.type === 'opt-grid') html += renderOptGrid(s);
   else if (s.type === 'kstats') html += renderKStats(s);
